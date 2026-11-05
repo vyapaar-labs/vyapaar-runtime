@@ -3,8 +3,22 @@ name = "vyapaar-runtime-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Transport-agnostic versioned API surface for the Vyapaar platform"
+
+[lib]
+name = "vyapaar_runtime_api"
 
 [dependencies]
-vyapaar-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+vyapaar-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+sha2.workspace = true
+rust_decimal.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -3,8 +3,23 @@ name = "vyapaar-runtime-enhancer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Strategy optimization and enhancement tools for Vyapaar platform"
 
 [dependencies]
-vyapaar-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+vyapaar-core.workspace = true
+vyapaar-risk.workspace = true
+vyapaar-runtime-actors.workspace = true
+vyapaar-runtime-backtest.workspace = true
+vyapaar-runtime-strategy.workspace = true
+rust_decimal.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+rand.workspace = true
+rand_distr.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+num_cpus.workspace = true
+rayon.workspace = true
+statrs.workspace = true

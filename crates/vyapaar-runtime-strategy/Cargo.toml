@@ -3,8 +3,33 @@ name = "vyapaar-runtime-strategy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Strategy trait, runner state machine, and manifest contracts for Vyapaar"
+
+[lib]
+name = "vyapaar_runtime_strategy"
 
 [dependencies]
-vyapaar-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+vyapaar-core.workspace = true
+vyapaar-risk.workspace = true
+vyapaar-market-indicators.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+rust_decimal.workspace = true
+toml.workspace = true
+chrono.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+serde_json.workspace = true
+vyapaar-runtime-test-utils.workspace = true
+vyapaar-runtime-feed.workspace = true
+vyapaar-runtime-market.workspace = true
+vyapaar-runtime-testing.workspace = true
+
+[features]
+legacy_engine = []

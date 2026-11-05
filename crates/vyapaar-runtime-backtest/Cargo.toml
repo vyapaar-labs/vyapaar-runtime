@@ -3,8 +3,34 @@ name = "vyapaar-runtime-backtest"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "vyapaar_runtime_backtest"
 
 [dependencies]
-vyapaar-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+vyapaar-core.workspace = true
+vyapaar-risk.workspace = true
+vyapaar-ledger.workspace = true
+vyapaar-ledger-portfolio.workspace = true
+vyapaar-ledger-journal.workspace = true
+vyapaar-runtime-strategy.workspace = true
+arrow.workspace = true
+parquet.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tempfile = "3"
+vyapaar-agent.workspace = true

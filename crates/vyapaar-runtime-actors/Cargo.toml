@@ -3,8 +3,39 @@ name = "vyapaar-runtime-actors"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Asynchronous actor runtime and supervision tree for market data, strategies, risk gate, and execution"
+
+[lib]
+name = "vyapaar_runtime_actors"
 
 [dependencies]
-vyapaar-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+vyapaar-core.workspace = true
+vyapaar-risk.workspace = true
+vyapaar-ledger.workspace = true
+vyapaar-runtime-persistence.workspace = true
+vyapaar-exec-core = { path = "../../../vyapaar-exec/crates/vyapaar-exec-core" }
+tokio.workspace = true
+tokio-util.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+rust_decimal_macros.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+prometheus.workspace = true
+axum.workspace = true
+vyapaar-ledger-portfolio.workspace = true
+vyapaar-ledger-oms.workspace = true
+vyapaar-ledger-journal.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+tracing-subscriber.workspace = true
+vyapaar-runtime-testing = { path = "../vyapaar-runtime-testing" }
+vyapaar-exec-core = { path = "../../../vyapaar-exec/crates/vyapaar-exec-core" }

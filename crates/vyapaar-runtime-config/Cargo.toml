@@ -3,8 +3,22 @@ name = "vyapaar-runtime-config"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Run-configuration types for the Vyapaar platform (docs/archive/plan.md E0-S4)"
+
+[lib]
+name = "vyapaar_runtime_config"
 
 [dependencies]
-vyapaar-core = { workspace = true }
-serde = { workspace = true }
-thiserror = { workspace = true }
+vyapaar-core.workspace = true
+vyapaar-risk.workspace = true
+vyapaar-runtime-strategy.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+toml.workspace = true
+rust_decimal.workspace = true
