@@ -1,0 +1,32 @@
+schema = 1
+id = "portfolio.equal_weight"
+kind = "execute"
+title = "Equal Weight Portfolio"
+description = "Rebalances a portfolio to equal weight across holdings whenever drift exceeds the threshold."
+tags = ["portfolio", "rebalance", "equal_weight"]
+pitfalls = ["Frequent rebalancing in volatile markets can churn commissions; widen the drift threshold."]
+
+[params.drift_threshold]
+type = "float"
+default = 0.05
+min = 0.0
+max = 1.0
+step = 0.01
+description = "Drift threshold that triggers a rebalance"
+sweepable = true
+
+[requires]
+bars = ["close"]
+history_bars = 1
+
+[consumes]
+shape = "portfolio"
+columns = []
+
+[emits]
+shape = "orders"
+adds = []
+report = []
+
+[chain]
+pipeline = "signal -> size -> risk -> execute"

@@ -1,0 +1,41 @@
+schema = 1
+id = "signal.kama_crossover"
+kind = "signal"
+title = "KAMA Crossover"
+description = "Kaufman Adaptive Moving Average crossover signal: a fast KAMA crossing a slow KAMA."
+tags = ["trend", "kama", "crossover", "adaptive"]
+pitfalls = ["KAMA lags in choppy markets; confirm with volume before entry."]
+
+[params.fast_period]
+type = "int"
+default = 10
+min = 2
+max = 200
+step = 1
+description = "Fast KAMA period"
+sweepable = true
+
+[params.slow_period]
+type = "int"
+default = 30
+min = 5
+max = 200
+step = 1
+description = "Slow KAMA period"
+sweepable = true
+
+[requires]
+bars = ["close"]
+history_bars = 30
+
+[consumes]
+shape = "bars"
+columns = ["close"]
+
+[emits]
+shape = "signal"
+adds = ["kama_fast", "kama_slow"]
+report = ["kama_fast", "kama_slow"]
+
+[chain]
+pipeline = "signal -> size -> risk -> execute"

@@ -7,9 +7,13 @@ members = [
   "crates/vyapaar-runtime-backtest",
   "crates/vyapaar-runtime-config",
   "crates/vyapaar-runtime-enhancer",
-  "crates/vyapaar-runtime-persistence",
+  "crates/vyapaar-runtime-feed",
+  "crates/vyapaar-indicators",
   "crates/vyapaar-runtime-jobs",
+  "crates/vyapaar-runtime-market",
+  "crates/vyapaar-runtime-persistence",
   "crates/vyapaar-runtime-strategy",
+  "crates/vyapaar-runtime-test-utils",
   "crates/vyapaar-runtime-testing",
 ]
 
@@ -21,9 +25,103 @@ license = "AGPL-3.0"
 repository = "https://github.com/vyapaar-labs/vyapaar-runtime"
 
 [workspace.dependencies]
+# Vyapaar internal crates
 vyapaar-core = { path = "../vyapaar-core" }
+vyapaar-risk = { path = "../vyapaar-risk" }
+vyapaar-ledger = { path = "../vyapaar-ledger/crates/vyapaar-ledger" }
+vyapaar-ledger-portfolio = { path = "../vyapaar-ledger/crates/vyapaar-ledger-portfolio" }
+vyapaar-ledger-oms = { path = "../vyapaar-ledger/crates/vyapaar-ledger-oms" }
+vyapaar-ledger-journal = { path = "../vyapaar-ledger/crates/vyapaar-ledger-journal" }
+vyapaar-runtime-actors = { path = "crates/vyapaar-runtime-actors" }
+vyapaar-runtime-api = { path = "crates/vyapaar-runtime-api" }
+vyapaar-runtime-api-rest = { path = "crates/vyapaar-runtime-api-rest" }
+vyapaar-runtime-backtest = { path = "crates/vyapaar-runtime-backtest" }
+vyapaar-runtime-config = { path = "crates/vyapaar-runtime-config" }
+vyapaar-runtime-enhancer = { path = "crates/vyapaar-runtime-enhancer" }
+vyapaar-runtime-persistence = { path = "crates/vyapaar-runtime-persistence" }
+vyapaar-runtime-jobs = { path = "crates/vyapaar-runtime-jobs" }
+vyapaar-runtime-strategy = { path = "crates/vyapaar-runtime-strategy" }
+vyapaar-runtime-testing = { path = "crates/vyapaar-runtime-testing" }
+vyapaar-api-rest = { path = "crates/vyapaar-runtime-api-rest" }
+vyapaar-api = { path = "crates/vyapaar-runtime-api" }
+vyapaar-backtest = { path = "crates/vyapaar-runtime-backtest" }
+vyapaar-actors = { path = "crates/vyapaar-runtime-actors" }
+vyapaar-indicators = { path = "crates/vyapaar-indicators" }
+vyapaar-runtime-test-utils = { path = "crates/vyapaar-runtime-test-utils" }
+vyapaar-runtime-feed = { path = "crates/vyapaar-runtime-feed" }
+vyapaar-runtime-market = { path = "crates/vyapaar-runtime-market" }
+vyapaar-market-feed = { path = "../vyapaar-market/crates/vyapaar-market-feed" }
+vyapaar-market-store = { path = "../vyapaar-market/crates/vyapaar-market-store" }
+vyapaar-market-core = { path = "../vyapaar-market/crates/vyapaar-market-core" }
+vyapaar-market-normalizer = { path = "../vyapaar-market/crates/vyapaar-market-normalizer" }
+vyapaar-market-indicators = { path = "../vyapaar-market/crates/vyapaar-market-indicators" }
+vyapaar-market-signals = { path = "../vyapaar-market/crates/vyapaar-market-signals" }
+vyapaar-market-loaders = { path = "../vyapaar-market/crates/vyapaar-market-loaders" }
+vyapaar-market-finance = { path = "../vyapaar-market/crates/vyapaar-market-finance" }
+vyapaar-market-zerodha = { path = "../vyapaar-market/crates/vyapaar-market-zerodha" }
+vyapaar-market-upstox = { path = "../vyapaar-market/crates/vyapaar-market-upstox" }
+vyapaar-market-fyers = { path = "../vyapaar-market/crates/vyapaar-market-fyers" }
+vyapaar-market-angelone = { path = "../vyapaar-market/crates/vyapaar-market-angelone" }
+vyapaar-exec-core = { path = "../vyapaar-exec/crates/vyapaar-exec-core" }
+vyapaar-exec-auth = { path = "../vyapaar-exec/crates/vyapaar-exec-auth" }
+vyapaar-exec-router = { path = "../vyapaar-exec/crates/vyapaar-exec-router" }
+vyapaar-exec-slicer = { path = "../vyapaar-exec/crates/vyapaar-exec-slicer" }
+vyapaar-exec-audit = { path = "../vyapaar-exec/crates/vyapaar-exec-audit" }
+vyapaar-exec-zerodha = { path = "../vyapaar-exec/crates/vyapaar-exec-zerodha" }
+vyapaar-exec-upstox = { path = "../vyapaar-exec/crates/vyapaar-exec-upstox" }
+vyapaar-exec-angelone = { path = "../vyapaar-exec/crates/vyapaar-exec-angelone" }
+vyapaar-agent-core = { path = "../vyapaar-agent/crates/vyapaar-agent-core" }
+vyapaar-agent = { path = "../vyapaar-agent/crates/vyapaar-agent" }
+vyapaar-agent-prompt = { path = "../vyapaar-agent/crates/vyapaar-agent-prompt" }
+vyapaar-agent-replay = { path = "../vyapaar-agent/crates/vyapaar-agent-replay" }
+vyapaar-agent-llm = { path = "../vyapaar-agent/crates/vyapaar-agent-llm" }
+vyapaar-agent-trader-loop = { path = "../vyapaar-agent/crates/vyapaar-agent-trader-loop" }
+vyapaar-agent-research = { path = "../vyapaar-agent/crates/vyapaar-agent-research" }
+vyapaar-agent-analytics = { path = "../vyapaar-agent/crates/vyapaar-agent-analytics" }
+vyapaar-agent-genetic = { path = "../vyapaar-agent/crates/vyapaar-agent-genetic" }
+vyapaar-agent-mcp = { path = "../vyapaar-agent/crates/vyapaar-agent-mcp" }
+vyapaar-ffi-codegen = { path = "../vyapaar-ffi/crates/vyapaar-ffi-codegen" }
+vyapaar-ffi-py = { path = "../vyapaar-ffi/crates/vyapaar-ffi-py" }
+
+# External dependencies
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"
 tracing = "0.1"
+async-trait = "0.1"
+axum = { version = "0.7", features = ["ws"] }
+chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
+uuid = { version = "1", features = ["v4", "serde"] }
+rust_decimal = "1"
+rust_decimal_macros = "1"
+prometheus = "0.13"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tokio-util = "0.7"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "sqlite", "uuid", "chrono", "rust_decimal", "macros", "migrate"] }
+arrow = "53"
+parquet = "53"
+anyhow = "1"
+bytes = "1"
+rand = "0.8"
+schemars = "0.8"
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "compression-gzip"] }
+async-stream = "0.3"
+tokio-stream = "0.1"
+http-body-util = "0.1"
+serde_urlencoded = "0.7"
+jsonwebtoken = { version = "9.3", default-features = false, features = ["use_pem"] }
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+getrandom = "0.3"
+toml = "0.8"
+hex = "0.4"
+sha2 = "0.10"
+tempfile = "3"
+rand_distr = "0.4"
+num_cpus = "1"
+rayon = "1.9"
+statrs = "0.16"
+tokio-tungstenite = "0.24"
+reqwest = "0.12"

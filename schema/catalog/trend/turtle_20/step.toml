@@ -1,0 +1,41 @@
+schema = 1
+id = "signal.turtle_20"
+kind = "signal"
+title = "Turtle Trading System"
+description = "Donchian channel breakout: enter on a 20-day high/low breakout, exit on a 10-day opposite breakout."
+tags = ["trend", "breakout", "turtle", "donchian"]
+pitfalls = ["Whipsaws in ranging markets; size positions to survive consecutive losing breakouts."]
+
+[params.entry_period]
+type = "int"
+default = 20
+min = 5
+max = 100
+step = 1
+description = "Entry breakout lookback period"
+sweepable = true
+
+[params.exit_period]
+type = "int"
+default = 10
+min = 2
+max = 50
+step = 1
+description = "Exit breakout lookback period"
+sweepable = true
+
+[requires]
+bars = ["high", "low", "close"]
+history_bars = 20
+
+[consumes]
+shape = "bars"
+columns = ["high", "low", "close"]
+
+[emits]
+shape = "signal"
+adds = ["entry_signal", "exit_signal"]
+report = ["entry_signal", "exit_signal"]
+
+[chain]
+pipeline = "signal -> size -> risk -> execute"
