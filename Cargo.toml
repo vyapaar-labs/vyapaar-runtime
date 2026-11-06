@@ -72,6 +72,8 @@ vyapaar-exec-upstox = { path = "../vyapaar-exec/crates/vyapaar-exec-upstox" }
 vyapaar-exec-angelone = { path = "../vyapaar-exec/crates/vyapaar-exec-angelone" }
 vyapaar-agent-core = { path = "../vyapaar-agent/crates/vyapaar-agent-core" }
 vyapaar-agent = { path = "../vyapaar-agent/crates/vyapaar-agent" }
+vyapaar-agent-chat = { path = "../vyapaar-agent/crates/vyapaar-agent-chat" }
+vyapaar-agent-chat-tools = { path = "../vyapaar-agent/crates/vyapaar-agent-chat-tools" }
 vyapaar-agent-prompt = { path = "../vyapaar-agent/crates/vyapaar-agent-prompt" }
 vyapaar-agent-replay = { path = "../vyapaar-agent/crates/vyapaar-agent-replay" }
 vyapaar-agent-llm = { path = "../vyapaar-agent/crates/vyapaar-agent-llm" }

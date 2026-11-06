@@ -12,6 +12,9 @@ name = "vyapaar_runtime_api"
 
 [dependencies]
 vyapaar-core.workspace = true
+vyapaar-ledger.workspace = true
+vyapaar-agent-chat-tools.workspace = true
+async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
@@ -22,3 +25,5 @@ rust_decimal.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+tokio.workspace = true
+rust_decimal_macros.workspace = true

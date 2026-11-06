@@ -16,6 +16,7 @@
 
 pub mod cache;
 pub mod capabilities;
+pub mod chat_adapters;
 pub mod ingest;
 pub mod market;
 pub mod profile;
@@ -33,6 +34,7 @@ pub mod wire;
 
 pub use cache::{CacheKey, CachedResult, ResultCache, canonical_json_bytes};
 pub use capabilities::{Capabilities, CapabilityManifest};
+pub use chat_adapters::{LedgerPortfolioReader, RuntimeMarketReader, RuntimeSnapshotSource};
 pub use ingest::{MAX_INGEST_BARS, check_ingest_batch};
 pub use market::{
     DEFAULT_DEPTH_LEVELS, DEFAULT_TIMEFRAME, MAX_DEPTH_LEVELS, ResolvedBarsQuery,
