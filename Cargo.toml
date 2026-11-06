@@ -127,3 +127,28 @@ rayon = "1.9"
 statrs = "0.16"
 tokio-tungstenite = "0.24"
 reqwest = "0.12"
+
+[profile.dev]
+opt-level = 1
+debug = false
+strip = "debuginfo"
+
+[profile.test]
+opt-level = 1
+debug = false
+strip = "debuginfo"
+
+[profile.dbg]
+inherits = "dev"
+debug = 2
+strip = "none"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.prod]
+inherits = "release"
+lto = true
+codegen-units = 1
