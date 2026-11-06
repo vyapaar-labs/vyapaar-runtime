@@ -23,8 +23,8 @@
 * **Zero-I/O in Domain Logic**: Simulation clock is stepped deterministically.
 * **Zero Floats Policy**: All accounting and prices use `Decimal`.
 * **TDD & Parallel Test Directory Rule (MANDATORY)**:
-  - All tests must live in `tests/` parallel to `src/`.
-  - **STRICTLY FORBIDDEN**: In-file `#[test]` inside `src/`.
+  - All tests must live in `tests/` parallel to `src/`, or in a `src/tests/` module directory.
+  - **STRICTLY FORBIDDEN**: In-file `#[test]` inside production `src/` files.
 * **Check .agents/HANDOFF.md**: Always verify handoff status before starting work.
 
 ---
