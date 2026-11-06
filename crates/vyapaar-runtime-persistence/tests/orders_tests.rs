@@ -16,7 +16,7 @@ async fn setup() -> Database {
         .await
         .expect("connect sqlite::memory:");
     let applied = migrate(&db).await.expect("migrate");
-    assert_eq!(applied, vec![1, 2, 3, 4, 5]);
+    assert_eq!(applied, vec![1, 2, 3, 4, 5, 6]);
     db
 }
 

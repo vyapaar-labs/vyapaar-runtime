@@ -77,6 +77,12 @@ const POSTGRES_MIGRATIONS: &[EmbeddedMigration] = &[
         up: include_str!("../migrations/postgres/006_audit_ledger.up.sql"),
         down: include_str!("../migrations/postgres/006_audit_ledger.down.sql"),
     },
+    EmbeddedMigration {
+        version: 7,
+        name: "007_agent_chat",
+        up: include_str!("../migrations/postgres/007_agent_chat.up.sql"),
+        down: include_str!("../migrations/postgres/007_agent_chat.down.sql"),
+    },
 ];
 
 /// SQLite migration set. The audit ledger is intentionally absent: on SQLite
@@ -112,6 +118,12 @@ const SQLITE_MIGRATIONS: &[EmbeddedMigration] = &[
         name: "005_positions",
         up: include_str!("../migrations/sqlite/005_positions.up.sql"),
         down: include_str!("../migrations/sqlite/005_positions.down.sql"),
+    },
+    EmbeddedMigration {
+        version: 6,
+        name: "006_agent_chat",
+        up: include_str!("../migrations/sqlite/006_agent_chat.up.sql"),
+        down: include_str!("../migrations/sqlite/006_agent_chat.down.sql"),
     },
 ];
 

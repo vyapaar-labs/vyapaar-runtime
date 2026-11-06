@@ -15,6 +15,7 @@ pub mod messages;
 pub mod migrations;
 pub mod orders;
 pub mod positions;
+pub mod sessions;
 pub mod traders;
 
 pub use audit::{AuditError, AuditLedgerRecord, SqliteAuditLedger};
@@ -27,6 +28,7 @@ pub use migrations::{
 };
 pub use orders::{OrderStore, OrderStoreError, PersistedOrder};
 pub use positions::{PersistedPosition, PersistedPositionLot, PositionStore, PositionStoreError};
+pub use sessions::SqlxSessionStore;
 pub use traders::{PersistedTrader, TraderStore, TraderStoreError};
 
 /// Explicit repository type aliases matching the system architecture.

@@ -93,7 +93,7 @@ async-trait = "0.1"
 axum = { version = "0.7", features = ["ws"] }
 chrono = { version = "0.4", features = ["serde"] }
 futures = "0.3"
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
 rust_decimal = "1"
 rust_decimal_macros = "1"
 prometheus = "0.13"
