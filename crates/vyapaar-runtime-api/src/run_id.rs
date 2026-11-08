@@ -19,8 +19,16 @@ const MAX_RANDOM: u128 = (1 << 80) - 1;
 
 /// A text was not a well-formed run id.
 #[derive(Clone, Debug, PartialEq, Eq, Error)]
-#[error("not a run id: expected 26 characters matching ^[0-9A-HJKMNP-TV-Z]{{26}}$")]
-pub struct RunIdError;
+pub enum RunIdError {
+    /// Expected 26 characters.
+    #[error(
+        "not a run id: expected 26 characters matching ^[0-9A-HJKMNP-TV-Z]{{26}}$, got length {0}"
+    )]
+    InvalidLength(usize),
+    /// Invalid character not in Crockford Base32 alphabet.
+    #[error("not a run id: invalid Crockford Base32 character '{0}' (expected [0-9A-HJKMNP-TV-Z])")]
+    InvalidCharacter(char),
+}
 
 /// Identifier of a backtest run or sweep job (`run_id` / `job_id` on the wire).
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -30,14 +38,18 @@ impl RunId {
     /// Validates `text` against `^[0-9A-HJKMNP-TV-Z]{26}$` (hand-written, byte-wise).
     ///
     /// Lowercase, other lengths, `I`/`L`/`O`/`U`, separators and percent-escapes are all
-    /// refused, so a parsed id is safe as a directory name.
+    /// refused, so a parsed id is safe as a directory name and prevents path traversal.
     pub fn parse(text: &str) -> Result<Self, RunIdError> {
         let bytes = text.as_bytes();
-        if bytes.len() == ID_LEN && bytes.iter().all(|b| ALPHABET.contains(b)) {
-            Ok(Self(text.to_owned()))
-        } else {
-            Err(RunIdError)
+        if bytes.len() != ID_LEN {
+            return Err(RunIdError::InvalidLength(bytes.len()));
         }
+        for &b in bytes {
+            if !ALPHABET.contains(&b) {
+                return Err(RunIdError::InvalidCharacter(b as char));
+            }
+        }
+        Ok(Self(text.to_owned()))
     }
 
     /// The id as text.

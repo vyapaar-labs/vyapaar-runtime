@@ -5,8 +5,14 @@ Date: 2026-11-05 · Full context: `/project1/vyapaar-labs/.agents/HANDOFF.md` (s
 ## Gate status — ✅ GREEN
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets -- -D warnings`: ✅
-- `cargo test --workspace`: ✅ (109 test binaries, 0 failures)
+- `cargo test --workspace`: ✅
 - `grep -rn "#\[cfg(test)\]" crates/*/src/`: ✅ 0 matches
+
+## What was implemented (PLAN-0001 ADR 0017 Run Lifecycle & Journaling)
+- `RunId`: Crockford Base32 validation against path traversal and invalid characters (`RunIdError::InvalidLength`, `RunIdError::InvalidCharacter`). Tests in `crates/vyapaar-runtime-api/tests/run_id_tests.rs`.
+- `FileJournalWriter`: directory structure management (`manifest.json`, `events.ndjson`, `trades.json`, `metrics.json`) with streaming NDJSON event appends and finalization.
+- `recover_interrupted_runs`: scans journals directory on reboot/restart to mark unfinalized pending/running runs as `Failed` with `ErrorDetail` reason `interrupted`. Tests in `crates/vyapaar-runtime-api-rest/tests/journal_tests.rs`.
+- Zero in-file tests in production `src/` files per §3.2.
 
 All work committed in this submodule (4 commits): ported crates, workspace wiring + shim crates + configs/schema, ported test suites, SQLx migrations.
 
