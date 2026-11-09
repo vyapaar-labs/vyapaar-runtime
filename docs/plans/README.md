@@ -5,6 +5,12 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 - Plans are collections of gaps (`docs/plans/XXXX-*.md`).
 - When implemented, plan documents are cleaned up from `docs/plans/` and recorded in this index.
 
+## Active Plans
+
+| # | Title | Target Scope | Status |
+|---|-------|--------------|--------|
+| [0003](0003-trade-journal-and-market-reference-rest-endpoints.md) | REST endpoints for trade-journal analytics and market reference data (symbol profile, economic calendar) | `vyapaar-runtime-api-rest` | Proposed |
+
 ## Implemented Plans
 
 | # | Title | Target Scope | Implemented In |
