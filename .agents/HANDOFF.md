@@ -62,8 +62,16 @@ Date: 2026-11-09 · Full context: `/project1/vyapaar-labs/.agents/HANDOFF.md` (s
 - `cargo test --workspace --profile prod`: ✅ 117 targets, 445 passed, 0 failed
 - `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
 
+## GAP-0002 remediation complete
+- **Statistical validation kernel & backtest stop-fill engine**:
+  - `vyapaar-runtime-backtest`: implemented overnight gap-through-stop fill penalties (E2) and conservative same-bar stop ordering (E3) in `crates/vyapaar-runtime-backtest/src/engine.rs` + 6 tests in `tests/stop_fill_tests.rs`.
+  - M5 freeze limits already fully enforced upstream via `vyapaar-risk` (`limits.rs`, `freeze_limits: HashMap<InstrumentId, Quantity>`) and `vyapaar-exec`.
+  - Retired GAP-0002 (removed doc, moved to Closed Gaps table in `docs/gaps/README.md`).
+
+## Gate status
+- `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
+- `cargo test --workspace --profile prod`: ✅ all targets passed, 0 failed
+- `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
+
 ## Immediate next step
-PLAN-0001 Stages 1–4 complete in this repo. Open follow-ups are tracked as
-GAP-0003 (broker wire transports) and `vyapaar-ui/docs/gaps/0002` (ui-core trade
-rows for replayable journals). Next repo work: PLAN-0002 (statistical gates) or
-consumer-driven Level 7; do not start these without a new batch session.
+GAP-0002 closed successfully across `vyapaar-core`, `vyapaar-runtime`, and `vyapaar-ui`. Open follow-up is GAP-0003 (broker wire transports).
