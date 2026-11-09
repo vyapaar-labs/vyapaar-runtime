@@ -222,4 +222,55 @@ impl OrderIntent {
         request.tif = self.time_in_force;
         Ok(request)
     }
+
+    /// Validates the intent and converts it into a concrete
+    /// [`OrderRequest`] with an explicit, deterministic `client_order_id`.
+    ///
+    /// Callers that own ID generation — journal replays, seeded backtests,
+    /// restored live sessions — must mint IDs here (for example from seed +
+    /// sequence) and never rely on random v4 UUIDs; see
+    /// [`OrderRequest::with_id`].
+    pub fn into_order_with_id(
+        self,
+        client_order_id: vyapaar_core::uuid::Uuid,
+        algo_id: impl Into<String>,
+    ) -> Result<OrderRequest, IntentError> {
+        self.validate()?;
+        let mut request = OrderRequest::with_id(
+            client_order_id,
+            self.instrument_id,
+            self.side,
+            self.order_type,
+            self.quantity,
+            algo_id,
+        );
+        request.tif = self.time_in_force;
+        Ok(request)
+    }
+
+    /// Converts this intent reference into a concrete [`OrderRequest`],
+    /// using the default algorithmic identifier `"STRATEGY_DISPATCH"`.
+    pub fn to_order_request(&self) -> Result<OrderRequest, IntentError> {
+        self.to_order_request_with_algo("STRATEGY_DISPATCH")
+    }
+
+    /// Converts this intent reference into a concrete [`OrderRequest`],
+    /// stamped with the specified `algo_id` (SEBI-mandated).
+    pub fn to_order_request_with_algo(
+        &self,
+        algo_id: impl Into<String>,
+    ) -> Result<OrderRequest, IntentError> {
+        self.clone().into_order(algo_id)
+    }
+
+    /// Converts this intent reference into a concrete [`OrderRequest`] with
+    /// an explicit, deterministic `client_order_id`, stamped with the
+    /// specified `algo_id` (SEBI-mandated).
+    pub fn to_order_request_with_id(
+        &self,
+        client_order_id: vyapaar_core::uuid::Uuid,
+        algo_id: impl Into<String>,
+    ) -> Result<OrderRequest, IntentError> {
+        self.clone().into_order_with_id(client_order_id, algo_id)
+    }
 }

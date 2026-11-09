@@ -21,6 +21,13 @@ tracing.workspace = true
 async-trait.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
+rayon.workspace = true
+num_cpus.workspace = true
+rust_decimal.workspace = true
+cron.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+futures.workspace = true
+tempfile.workspace = true
+rust_decimal_macros.workspace = true

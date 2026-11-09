@@ -18,6 +18,7 @@
 pub mod buy_and_hold;
 pub mod context;
 pub mod contract_probe;
+pub mod dispatch;
 pub mod dyn_strategy;
 pub mod error;
 pub mod factory;
@@ -38,6 +39,9 @@ pub mod risk;
 pub use buy_and_hold::BuyAndHold;
 pub use context::{LedgerContext, StrategyContext};
 pub use contract_probe::{ContractProbe, Observation};
+pub use dispatch::{
+    AngelOneAdapter, BrokerAdapter, DispatchError, Dispatcher, PaperAdapter, ZerodhaAdapter,
+};
 pub use dyn_strategy::DynStrategy;
 pub use error::{Result, StrategyError};
 pub use factory::{BuiltinStrategyFactory, StrategyFactory, StrategyFactoryRegistry};

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use vyapaar_runtime_api::JournalWriter;
 use vyapaar_runtime_api::responses::RunStatus;
+use vyapaar_runtime_api::run_id::RunId;
 use vyapaar_runtime_api::runs::RunManifest;
 use vyapaar_runtime_api::{ErrorCode, ErrorDetail, Message};
 
@@ -95,7 +96,21 @@ impl FileJournalWriter {
     /// Creates a new run directory under `base_dir` using `manifest.run_id`, writes the
     /// initial `manifest.json`, and opens `events.ndjson` for append streaming.
     pub fn create(base_dir: &Path, manifest: &RunManifest) -> std::io::Result<Self> {
-        let dir = base_dir.join(manifest.run_id.to_string());
+        let manifest_value = serde_json::to_value(manifest)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        Self::create_from_value(base_dir, &manifest.run_id, &manifest_value)
+    }
+
+    /// Generic entry point taking `manifest.json` as pre-serialized JSON, for run
+    /// kinds that do not carry a typed [`RunManifest`] (e.g. CLI job runs without a
+    /// strategy IR — PLAN-0001 Stage 4). `run_id` is validated and doubles as the
+    /// directory name (path-traversal safe by construction).
+    pub fn create_from_value(
+        base_dir: &Path,
+        run_id: &RunId,
+        manifest: &serde_json::Value,
+    ) -> std::io::Result<Self> {
+        let dir = base_dir.join(run_id.as_str());
         fs::create_dir_all(&dir)?;
 
         // Write initial manifest.json
@@ -128,6 +143,39 @@ impl FileJournalWriter {
     pub fn finalize(
         &mut self,
         manifest: &RunManifest,
+        trades: &serde_json::Value,
+        metrics: &serde_json::Value,
+    ) -> std::io::Result<()> {
+        self.events_writer.flush()?;
+        let manifest_json = serde_json::to_string_pretty(manifest)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let trades_json = serde_json::to_string_pretty(trades)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let metrics_json = serde_json::to_string_pretty(metrics)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        fs::write(self.dir.join("manifest.json"), manifest_json)?;
+        fs::write(self.dir.join("trades.json"), trades_json)?;
+        fs::write(self.dir.join("metrics.json"), metrics_json)?;
+        Ok(())
+    }
+
+    /// Overwrites `manifest.json` with a status snapshot without touching the
+    /// event stream (PLAN-0001 Stage 4: a job run's manifest flips
+    /// pending -> running -> terminal while events stream to `events.ndjson`).
+    pub fn write_manifest(&self, manifest: &serde_json::Value) -> std::io::Result<()> {
+        let manifest_json = serde_json::to_string_pretty(manifest)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        fs::write(self.dir.join("manifest.json"), manifest_json)
+    }
+
+    /// Typed-free variant of [`Self::finalize`]: flushes buffered events and
+    /// writes `manifest.json`, `trades.json`, and `metrics.json` from
+    /// pre-serialized JSON values, for run kinds that do not carry a typed
+    /// [`RunManifest`] (e.g. CLI job runs with `kind: "job"`).
+    pub fn finalize_value(
+        &mut self,
+        manifest: &serde_json::Value,
         trades: &serde_json::Value,
         metrics: &serde_json::Value,
     ) -> std::io::Result<()> {

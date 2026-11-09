@@ -8,11 +8,24 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use thiserror::Error;
-use tracing::{debug, info};
+use tracing::info;
 use uuid::Uuid;
 
-pub use job::Job;
-pub use scheduler::{CronSchedule, JobScheduler, JobSpec};
+pub mod budget;
+pub mod fencing;
+pub mod pool;
+pub mod registry;
+
+pub use budget::{BudgetExceededError, BudgetUsage, JobBudgets};
+pub use fencing::{FencingError, FencingLease};
+pub use job::{CancellableJob, Job, ProgressJob};
+pub use pool::{BoundedWorkerPool, PoolError, SweepContext, WorkerPoolConfig};
+pub use registry::{
+    ApprovalPolicy, FileJobRegistry, JobSpec, JobStatus, MissedPolicy, RegistryError,
+};
+pub use scheduler::{
+    CronSchedule, CronScheduleError, JobScheduler, SchedulerError, SchedulerState,
+};
 
 /// Job execution module
 pub mod job {
@@ -52,7 +65,7 @@ pub mod job {
 /// Scheduler module
 pub mod scheduler {
     use super::*;
-    use std::collections::HashMap;
+    use std::str::FromStr;
     use std::sync::Arc;
 
     /// Cron schedule expression (5-field format: minute hour day month weekday).
@@ -73,12 +86,14 @@ pub mod scheduler {
             if fields.len() != 5 {
                 return Err(CronScheduleError::InvalidFieldCount(fields.len()));
             }
-            // Basic validation - each field should contain valid cron syntax
+            // Strict validation against the grammar `next_execution` can actually
+            // honour: numeric fields with `*`, ranges, steps and comma lists.
+            // Letters (`L`/`W`) and arbitrary alphanumerics are refused at
+            // registration time rather than being silently unable to fire.
             for (i, field) in fields.iter().enumerate() {
-                let valid = field.chars().all(|c| {
-                    c.is_ascii_alphanumeric()
-                        || matches!(c, '*' | '?' | '-' | '/' | ',' | 'L' | 'W')
-                });
+                let valid = field
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || matches!(c, '*' | '?' | '-' | '/' | ','));
                 if !valid {
                     return Err(CronScheduleError::InvalidCharacter {
                         field_index: i,
@@ -95,13 +110,121 @@ pub mod scheduler {
         }
 
         /// Returns the next execution time after the given reference time.
+        ///
+        /// Honours the full 5-field cron grammar (minute, hour, day-of-month,
+        /// month, day-of-week with `*`, ranges `a-b`, steps `*/n`/`a-b/n` and
+        /// comma lists; Vixie OR semantics when both day fields are
+        /// restricted). Evaluation delegates to the `cron` crate over the
+        /// equivalent 6-field expression (the second field is fixed to 0), with
+        /// the day-of-week field rewritten from Vixie numbering (0/7 = Sunday,
+        /// 1 = Monday, … 6 = Saturday) to the crate's 1-based scheme.
+        /// Returns `None` when nothing fires after `after`.
         pub fn next_execution(&self, after: DateTime<Utc>) -> Option<DateTime<Utc>> {
-            // This is a simplified implementation. A full implementation would
-            // parse and calculate the next execution time based on cron fields.
-            // For production, consider using the `cron` crate's `Schedule` type.
-            debug!("Cron schedule: {}, next after: {}", self.0, after);
-            None
+            let expr = self.0.trim();
+            if expr.is_empty() {
+                return None;
+            }
+            // Both `*` and `?` are accepted and mean the same.
+            let normalized = expr.replace('?', "*");
+            let fields: Vec<&str> = normalized.split_whitespace().collect();
+            if fields.len() != 5 {
+                return None;
+            }
+
+            // Vixie semantics: when BOTH day fields are restricted, a time
+            // fires when EITHER of them matches. The `cron` crate intersects
+            // day fields, so the union is evaluated as the earlier of the two
+            // one-field-restricted schedules.
+            let dom_restricted = fields[2] != "*";
+            let dow_restricted = fields[4] != "*";
+            if dom_restricted && dow_restricted {
+                let dom_only = expand_fields(&fields, 4, "*");
+                let dow_only = expand_fields(&fields, 2, "*");
+                return min_option(next_fire(&dom_only, after), next_fire(&dow_only, after));
+            }
+            next_fire(&fields, after)
         }
+    }
+
+    /// `fields` with the field at `index` replaced by `value`.
+    fn expand_fields<'a>(fields: &[&'a str], index: usize, value: &'a str) -> Vec<&'a str> {
+        let mut out = fields.to_vec();
+        out[index] = value;
+        out
+    }
+
+    fn min_option(a: Option<DateTime<Utc>>, b: Option<DateTime<Utc>>) -> Option<DateTime<Utc>> {
+        match (a, b) {
+            (None, None) => None,
+            (None, b) => b,
+            (a, None) => a,
+            (Some(a), Some(b)) => Some(a.min(b)),
+        }
+    }
+
+    /// The next fire time strictly after `after` for a 5-field expression,
+    /// or `None` when the expression never fires again.
+    fn next_fire(fields: &[&str], after: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        if fields.len() != 5 {
+            return None;
+        }
+        let dow = translate_dow_field(fields[4])?;
+        let six_field = format!("0 {} {}", fields[..4].join(" "), dow);
+        let schedule = cron::Schedule::from_str(&six_field).ok()?;
+        schedule.after(&after).next()
+    }
+
+    /// Rewrites the day-of-week field from Vixie numbering (0/7 = Sunday,
+    /// 1 = Monday, … 6 = Saturday) into the `cron` crate's 1-based scheme
+    /// (1 = Sunday … 7 = Saturday), expanding every selector into an explicit
+    /// comma list so wrapped ranges (`6-7`) stay correct. Returns `None` when a
+    /// selector cannot be honoured.
+    fn translate_dow_field(token: &str) -> Option<String> {
+        use std::collections::BTreeSet;
+
+        // Vixie selector semantics over days {0..6} (Sunday first), with 7 ≡ 0 (Sunday).
+        fn values(selector: &str) -> Option<BTreeSet<u8>> {
+            let (base, step) = match selector.split_once('/') {
+                Some((b, s)) => {
+                    let step = s.parse::<usize>().ok()?;
+                    if step == 0 {
+                        return None;
+                    }
+                    (b, step)
+                }
+                None => (selector, 1),
+            };
+            if base == "*" || base == "?" {
+                return Some((0u8..=6).step_by(step).collect());
+            }
+            if let Some((a, b)) = base.split_once('-') {
+                let a: u8 = a.parse().ok()?;
+                let b: u8 = b.parse().ok()?;
+                if a > 7 || b > 7 || a > b {
+                    return None;
+                }
+                // `a-7` includes Sunday (7 ≡ 0); 7 is normalized back to 0.
+                return Some((a..=b).step_by(step).map(|v| v % 7).collect());
+            }
+            let a: u8 = base.parse().ok()?;
+            if a > 7 {
+                return None;
+            }
+            Some(BTreeSet::from([a % 7]))
+        }
+
+        let mut wanted: BTreeSet<u8> = BTreeSet::new();
+        for sel in token.split(',') {
+            // Translate Vixie `v` (0=Sunday … 6=Saturday) to the crate's `v + 1`.
+            for v in values(sel)? {
+                wanted.insert(v + 1);
+            }
+        }
+        let day_list: Vec<String> = wanted.iter().map(|v| v.to_string()).collect();
+        if day_list.is_empty() {
+            return None;
+        }
+        Some(day_list.join(","))
     }
 
     impl std::fmt::Display for CronSchedule {
@@ -110,61 +233,7 @@ pub mod scheduler {
         }
     }
 
-    /// Specification for a scheduled job.
-    #[derive(Debug, Clone, Serialize, Deserialize)]
-    pub struct JobSpec {
-        /// Unique job ID.
-        pub id: Uuid,
-        /// Human-readable job name.
-        pub name: String,
-        /// Cron schedule for the job.
-        pub schedule: CronSchedule,
-        /// Optional job description.
-        pub description: Option<String>,
-        /// Optional metadata.
-        #[serde(default)]
-        pub metadata: HashMap<String, String>,
-        /// Whether the job is enabled.
-        pub enabled: bool,
-    }
-
-    impl JobSpec {
-        /// Creates a new job specification.
-        pub fn new(name: impl Into<String>, schedule: CronSchedule) -> Self {
-            Self {
-                id: Uuid::new_v4(),
-                name: name.into(),
-                schedule,
-                description: None,
-                metadata: HashMap::new(),
-                enabled: true,
-            }
-        }
-
-        /// Sets the job description.
-        pub fn with_description(mut self, desc: impl Into<String>) -> Self {
-            self.description = Some(desc.into());
-            self
-        }
-
-        /// Adds metadata key-value pair.
-        pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-            self.metadata.insert(key.into(), value.into());
-            self
-        }
-
-        /// Disables the job.
-        pub fn disable(mut self) -> Self {
-            self.enabled = false;
-            self
-        }
-
-        /// Enables the job.
-        pub fn enable(mut self) -> Self {
-            self.enabled = true;
-            self
-        }
-    }
+    pub use crate::registry::JobSpec;
 
     /// Error types for job scheduler operations.
     #[derive(Error, Debug)]
