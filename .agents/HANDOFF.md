@@ -62,11 +62,12 @@ Date: 2026-11-09 · Full context: `/project1/vyapaar-labs/.agents/HANDOFF.md` (s
 - `cargo test --workspace --profile prod`: ✅ 117 targets, 445 passed, 0 failed
 - `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
 
-## GAP-0002 remediation complete
-- **Statistical validation kernel & backtest stop-fill engine**:
-  - `vyapaar-runtime-backtest`: implemented overnight gap-through-stop fill penalties (E2) and conservative same-bar stop ordering (E3) in `crates/vyapaar-runtime-backtest/src/engine.rs` + 6 tests in `tests/stop_fill_tests.rs`.
+## GAP-0002 / PLAN-0002 remediation complete
+- **Statistical validation kernel & backtest stop-fill engine** (the full six-gate plan):
+  - `vyapaar-core::analytics`: DSR, PBO/CSCV, walk-forward, holdout, block-bootstrap Monte Carlo, cost-stress gates + `ValidationBlock` six-gate audit (`src/analytics/`, 30 tests in `tests/analytics_gates_tests.rs`).
+  - `vyapaar-runtime-backtest`: overnight gap-through-stop fill penalties (E2) and conservative same-bar stop ordering (E3) in `crates/vyapaar-runtime-backtest/src/engine.rs` + 6 tests in `tests/stop_fill_tests.rs`.
   - M5 freeze limits already fully enforced upstream via `vyapaar-risk` (`limits.rs`, `freeze_limits: HashMap<InstrumentId, Quantity>`) and `vyapaar-exec`.
-  - Retired GAP-0002 (removed doc, moved to Closed Gaps table in `docs/gaps/README.md`).
+  - Retired GAP-0002 and PLAN-0002: plan doc removed from `docs/plans/`, entry moved to Implemented Plans in `docs/plans/README.md`; GAP-0002 moved to Closed Gaps in `docs/gaps/README.md`.
 
 ## Gate status
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
@@ -74,4 +75,22 @@ Date: 2026-11-09 · Full context: `/project1/vyapaar-labs/.agents/HANDOFF.md` (s
 - `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
 
 ## Immediate next step
-GAP-0002 closed successfully across `vyapaar-core`, `vyapaar-runtime`, and `vyapaar-ui`. Open follow-up is GAP-0003 (broker wire transports).
+GAP-0003 (broker wire transports) is implemented and verified in `vyapaar-runtime`:
+- `ZerodhaKiteAdapter` now wires to the real `vyapaar-exec-zerodha` Kite Connect transport
+  (`POST /orders/regular`, `DELETE /orders/regular/{id}`) when credentials are configured
+  (`with_base_url`/`with_credentials`), delegating auth/session/rate-limiting to `vyapaar-exec`;
+  the sim path (`new()`) is unchanged so paper/zerodha/angelone economic parity holds.
+- Statutory `fee_breakdown` is computed on every sim fill via
+  `vyapaar-market-finance::india::costs` (`NseCashEquitySchedule`); the parity test now
+  asserts real (non-zero) fees plus cross-adapter parity.
+- `BrokerError` is normalized into `DispatchError` via `map_broker_error` (session expired /
+  rate limited / network / broker rejection); wire delegation, error mapping, and cancel
+  tests live in `tests/zerodha_wire_tests.rs`.
+- `docs/gaps/0003-*.md` retired; entry moved to Closed Gaps in `docs/gaps/README.md`.
+
+Follow-up (not blocking): Angel One remains a simulation scaffold pending
+`vyapaar-exec-angelone` (upstream placeholder), and golden-vector conformance over recorded
+broker sessions is deferred.
+
+- `docs/migration-guide.md` decimated: sub-crate mapping table moved to `docs/design/code-migration-map.md`; verification commands moved to `docs/roadmap/migration-verification.md`; original `migration-guide.md` removed.
+- Code reference docs added: `code-actors.md`, `code-backtest.md`, `code-enhancer.md`, `code-jobs.md`, `code-api-rest.md`, `code-persistence.md`, `code-strategy.md`, `code-config-testing-feed.md`.
