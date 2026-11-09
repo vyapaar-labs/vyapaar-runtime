@@ -1,15 +1,21 @@
 //! Strategy intent to multi-broker dispatch boundary.
 //!
 //! Provides the [`BrokerAdapter`] boundary, [`Dispatcher`] coordinator, and
-//! paper/Zerodha execution scaffolds.
+//! paper/Zerodha/AngelOne execution adapters and scaffolds.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
+use tokio::runtime::Runtime;
 use vyapaar_core::uuid::Uuid;
 use vyapaar_core::{FillReport, InstrumentId, Money, OrderRequest, OrderSide, Price};
+use vyapaar_exec_core::{BrokerError, BrokerExecutor};
+use vyapaar_exec_zerodha::ZerodhaExecutor;
+use vyapaar_market_finance::india::costs::NseCashEquitySchedule;
+use vyapaar_market_finance::{CostSchedule, MarketSegment};
 use vyapaar_risk::{RiskEngine, RiskRefusal};
 
 use crate::intent::{IntentError, OrderIntent};
@@ -58,11 +64,50 @@ pub enum DispatchError {
     /// Broker venue rejected or failed order execution.
     #[error("broker rejection: {0}")]
     BrokerRejection(String),
+
+    /// Broker session expired or authentication failure.
+    #[error("session expired: {0}")]
+    SessionExpired(String),
+
+    /// Market is closed or instrument not traded.
+    #[error("market closed: {0}")]
+    MarketClosed(String),
+
+    /// Rate limit exceeded on broker API.
+    #[error("rate limited: {0}")]
+    RateLimited(String),
+
+    /// Network connectivity or transport error.
+    #[error("network error: {0}")]
+    Network(String),
 }
 
 impl From<RiskRefusal> for DispatchError {
     fn from(err: RiskRefusal) -> Self {
         Self::RiskRefusal(Box::new(err))
+    }
+}
+
+/// Map a [`vyapaar_exec_core::BrokerError`] produced by a real wire transport
+/// into a human-readable string carried by [`DispatchError::BrokerRejection`].
+///
+/// The [`BrokerAdapter`] trait returns `Result<String, String>` to keep the
+/// boundary sync and temporally deterministic, so the broker error taxonomy is
+/// surfaced in the message text. A future trait refactor can promote these to
+/// fully typed [`DispatchError`] variants (`SessionExpired`, `RateLimited`,
+/// `Network`, `MarketClosed`).
+fn map_broker_error(err: BrokerError) -> String {
+    match err {
+        BrokerError::Auth(msg) => format!("session expired: {msg}"),
+        BrokerError::RateLimited(msg) => format!("rate limited: {msg}"),
+        BrokerError::Transport(msg) => format!("network error: {msg}"),
+        BrokerError::Timeout => "network error: request timed out".to_string(),
+        BrokerError::OrderNotFound(msg)
+        | BrokerError::Rejected(msg)
+        | BrokerError::InvalidRequest(msg) => {
+            format!("broker rejection: {msg}")
+        }
+        BrokerError::RiskRefusal(_) => "broker rejection: pre-trade risk refusal".to_string(),
     }
 }
 
@@ -248,6 +293,45 @@ impl AdapterState {
             }
         }
 
+        // Compute statutory transaction costs using vyapaar-market-finance
+        let notional_f64 = notional.to_f64().unwrap_or(0.0);
+        let schedule = NseCashEquitySchedule::delivery();
+        let seg = MarketSegment::from("equity");
+        let raw_fees = schedule.compute_costs(&seg, order.side, notional_f64);
+
+        let brokerage = Money::inr(
+            Decimal::from_f64_retain(raw_fees.get("brokerage").unwrap_or(0.0)).unwrap_or_default(),
+        );
+        let stt = Money::inr(
+            Decimal::from_f64_retain(raw_fees.get("stt").unwrap_or(0.0)).unwrap_or_default(),
+        );
+        let exchange_charges = Money::inr(
+            Decimal::from_f64_retain(raw_fees.get("exchange_fee").unwrap_or(0.0))
+                .unwrap_or_default(),
+        );
+        let gst = Money::inr(
+            Decimal::from_f64_retain(raw_fees.get("gst").unwrap_or(0.0)).unwrap_or_default(),
+        );
+        let stamp_duty = Money::inr(
+            Decimal::from_f64_retain(raw_fees.get("stamp_duty").unwrap_or(0.0)).unwrap_or_default(),
+        );
+        let sebi_charges = Money::inr(
+            Decimal::from_f64_retain(raw_fees.get("sebi_fee").unwrap_or(0.0)).unwrap_or_default(),
+        );
+
+        let fee_breakdown = vyapaar_core::FeeBreakdown {
+            brokerage,
+            stt,
+            exchange_charges,
+            gst,
+            stamp_duty,
+            sebi_charges,
+        };
+        let total_fee = fee_breakdown.total();
+
+        // Deduct statutory fees from cash
+        self.cash -= total_fee.amount;
+
         // Deterministic fill identity: a per-venue monotonic sequence (same
         // convention as exchange-provided fill numbers). No random UUIDs and
         // no wall-clock queries here — replaying the same timestamped order
@@ -266,8 +350,8 @@ impl AdapterState {
             correlation_id: order.correlation_id,
             client_id: order.client_id.clone(),
             account_id: None,
-            fee: Money::zero_inr(),
-            fee_breakdown: None,
+            fee: total_fee,
+            fee_breakdown: Some(fee_breakdown),
             trace_context: order.trace_context,
         };
 
@@ -391,34 +475,91 @@ impl BrokerAdapter for PaperAdapter {
     }
 }
 
-/// Scaffold implementation for Zerodha (Kite Connect v3) execution adapter.
-#[derive(Debug, Clone)]
-pub struct ZerodhaAdapter {
+/// Concrete implementation for Zerodha (Kite Connect v3) execution adapter.
+#[derive(Clone)]
+pub struct ZerodhaKiteAdapter {
     api_key: Option<String>,
     access_token: Option<String>,
     state: Arc<Mutex<AdapterState>>,
+    /// Live Kite Connect executor, only present when credentials are supplied.
+    /// When `None` the adapter runs in simulation/scaffold mode.
+    executor: Option<Arc<ZerodhaExecutor>>,
+    /// Tokio runtime used to drive the async `ZerodhaExecutor` from the sync
+    /// [`BrokerAdapter`] trait methods. Only `Some` alongside `executor`.
+    runtime: Option<Arc<Runtime>>,
 }
 
-impl ZerodhaAdapter {
-    /// Creates a new [`ZerodhaAdapter`] in scaffold/simulation mode with the given initial cash.
+impl std::fmt::Debug for ZerodhaKiteAdapter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ZerodhaKiteAdapter")
+            .field("api_key", &self.api_key)
+            .field("access_token", &self.access_token)
+            .field("state", &self.state)
+            .field(
+                "executor",
+                &self.executor.as_ref().map(|_| "ZerodhaExecutor"),
+            )
+            .field(
+                "runtime",
+                &self.runtime.as_ref().map(|_| "tokio::runtime::Runtime"),
+            )
+            .finish()
+    }
+}
+
+impl ZerodhaKiteAdapter {
+    /// Creates a new [`ZerodhaKiteAdapter`] in simulation/scaffold mode with the given initial cash.
     pub fn new(initial_cash: Decimal) -> Self {
         Self {
             api_key: None,
             access_token: None,
             state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            executor: None,
+            runtime: None,
         }
     }
 
-    /// Creates a new [`ZerodhaAdapter`] configured with Kite Connect credentials.
+    /// Creates a new [`ZerodhaKiteAdapter`] configured with Kite Connect credentials
+    /// and the default Kite Connect base URL (`https://api.kite.trade`).
+    ///
+    /// When credentials are supplied the adapter holds a live
+    /// [`ZerodhaExecutor`] (backed by [`vyapaar-exec`]) plus a tokio runtime so
+    /// the sync [`BrokerAdapter`] trait can drive the async wire transport.
+    /// [`submit_order`](Self::submit_order) / [`cancel_order`](Self::cancel_order)
+    /// then hit the real Kite Connect `POST /orders/regular` / `DELETE
+    /// /orders/regular/{id}` endpoints instead of the in-process simulation.
     pub fn with_credentials(
         api_key: impl Into<String>,
         access_token: impl Into<String>,
         initial_cash: Decimal,
     ) -> Self {
+        Self::with_base_url(
+            api_key,
+            access_token,
+            ZerodhaExecutor::DEFAULT_BASE_URL,
+            initial_cash,
+        )
+    }
+
+    /// Creates a new [`ZerodhaKiteAdapter`] configured with Kite Connect
+    /// credentials and a custom base URL (useful for testing against a local
+    /// mock or point-of-presence).
+    pub fn with_base_url(
+        api_key: impl Into<String>,
+        access_token: impl Into<String>,
+        base_url: impl Into<String>,
+        initial_cash: Decimal,
+    ) -> Self {
+        let key = api_key.into();
+        let token = access_token.into();
+        let exec = ZerodhaExecutor::with_base_url(key.clone(), token.clone(), base_url);
+        let runtime = Runtime::new().expect("tokio runtime for zerodha wire transport");
         Self {
-            api_key: Some(api_key.into()),
-            access_token: Some(access_token.into()),
+            api_key: Some(key),
+            access_token: Some(token),
             state: Arc::new(Mutex::new(AdapterState::new(initial_cash))),
+            executor: Some(Arc::new(exec)),
+            runtime: Some(Arc::new(runtime)),
         }
     }
 
@@ -474,18 +615,38 @@ impl ZerodhaAdapter {
     }
 }
 
-impl Default for ZerodhaAdapter {
+impl Default for ZerodhaKiteAdapter {
     fn default() -> Self {
         Self::new(Decimal::new(1_000_000, 0))
     }
 }
 
-impl BrokerAdapter for ZerodhaAdapter {
+impl BrokerAdapter for ZerodhaKiteAdapter {
     fn broker_name(&self) -> &'static str {
         "zerodha"
     }
 
     fn submit_order(&self, order: &OrderRequest, now: DateTime<Utc>) -> Result<String, String> {
+        // When a live ZerodhaExecutor is configured (credentials supplied),
+        // place the order on the real Kite Connect wire transport, delegating
+        // auth/session/rate-limiting to `vyapaar-exec`. Otherwise fall back to
+        // the in-process simulation scaffold (preserving determinism and
+        // paper/live economic parity for the sim path).
+        if let Some(exec) = &self.executor {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .expect("zerodha executor configured without tokio runtime");
+            // NOTE: `block_on` must not be called from within a tokio runtime
+            // worker thread (it panics). The sync `BrokerAdapter` boundary is
+            // currently only invoked from sync code; if the `Dispatcher` is
+            // later driven from an async actor context, this seam must become
+            // async or marshal onto a dedicated thread.
+            let ack = runtime
+                .block_on(exec.place_order(order.clone()))
+                .map_err(map_broker_error)?;
+            return Ok(ack.order_id);
+        }
         self.state
             .lock()
             .expect("poisoned lock")
@@ -493,6 +654,15 @@ impl BrokerAdapter for ZerodhaAdapter {
     }
 
     fn cancel_order(&self, broker_order_id: &str, _now: DateTime<Utc>) -> Result<(), String> {
+        if let Some(exec) = &self.executor {
+            let runtime = self
+                .runtime
+                .as_ref()
+                .expect("zerodha executor configured without tokio runtime");
+            return runtime
+                .block_on(exec.cancel_order(broker_order_id))
+                .map_err(map_broker_error);
+        }
         self.state
             .lock()
             .expect("poisoned lock")
@@ -500,17 +670,24 @@ impl BrokerAdapter for ZerodhaAdapter {
     }
 }
 
-/// Scaffold implementation for Angel One (SmartAPI) execution adapter.
+/// Concrete implementation for Angel One (SmartAPI) execution adapter.
+///
+/// NOTE (GAP-0003): `vyapaar-exec-angelone` is a placeholder crate
+/// (`vyapaar-exec/crates/vyapaar-exec-angelone`), so no real SmartAPI
+/// `placeOrder`/`cancelOrder` transport exists yet. This adapter therefore
+/// remains a simulation/scaffold identical in economics to [`PaperAdapter`].
+/// The real SmartAPI wire transport belongs in `vyapaar-exec`/`vyapaar-adapters`
+/// and will plug into this same [`BrokerAdapter`] boundary once available.
 #[derive(Debug, Clone)]
-pub struct AngelOneAdapter {
+pub struct AngelOneSmartApiAdapter {
     api_key: Option<String>,
     client_code: Option<String>,
     jwt_token: Option<String>,
     state: Arc<Mutex<AdapterState>>,
 }
 
-impl AngelOneAdapter {
-    /// Creates a new [`AngelOneAdapter`] in scaffold/simulation mode with the given initial cash.
+impl AngelOneSmartApiAdapter {
+    /// Creates a new [`AngelOneSmartApiAdapter`] in simulation/scaffold mode with the given initial cash.
     pub fn new(initial_cash: Decimal) -> Self {
         Self {
             api_key: None,
@@ -520,7 +697,7 @@ impl AngelOneAdapter {
         }
     }
 
-    /// Creates a new [`AngelOneAdapter`] configured with SmartAPI credentials.
+    /// Creates a new [`AngelOneSmartApiAdapter`] configured with SmartAPI credentials.
     pub fn with_credentials(
         api_key: impl Into<String>,
         client_code: impl Into<String>,
@@ -592,13 +769,13 @@ impl AngelOneAdapter {
     }
 }
 
-impl Default for AngelOneAdapter {
+impl Default for AngelOneSmartApiAdapter {
     fn default() -> Self {
         Self::new(Decimal::new(1_000_000, 0))
     }
 }
 
-impl BrokerAdapter for AngelOneAdapter {
+impl BrokerAdapter for AngelOneSmartApiAdapter {
     fn broker_name(&self) -> &'static str {
         "angelone"
     }
@@ -617,3 +794,9 @@ impl BrokerAdapter for AngelOneAdapter {
             .cancel_order(broker_order_id)
     }
 }
+
+/// Type alias for [`ZerodhaKiteAdapter`].
+pub type ZerodhaAdapter = ZerodhaKiteAdapter;
+
+/// Type alias for [`AngelOneSmartApiAdapter`].
+pub type AngelOneAdapter = AngelOneSmartApiAdapter;

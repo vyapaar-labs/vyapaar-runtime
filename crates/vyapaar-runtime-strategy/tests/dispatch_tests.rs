@@ -258,6 +258,12 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
         );
         assert_eq!(pf.fee, zf.fee, "Fill #{i} fee mismatch");
         assert_eq!(pf.fee, af.fee, "Fill #{i} fee mismatch (angelone)");
+        // Gap-0003: paper and live adapters must carry real (non-zero) statutory
+        // fees from the shared cost engine, not zero-fee sim fills.
+        assert!(
+            pf.fee.amount > Decimal::ZERO,
+            "Fill #{i} must carry a real (non-zero) statutory fee"
+        );
     }
 
     // 3. Verify positions match exactly
@@ -276,30 +282,46 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
     assert_eq!(p_pos.get(&reliance), Some(&Decimal::from(5))); // 10 bought - 5 sold
     assert_eq!(p_pos.get(&tcs), Some(&Decimal::from(15))); // 15 bought
 
-    // 4. Verify cash balance matches exactly
-    // Initial cash: 1,000,000
-    // Trade 1 (INFY buy 20 @ 1500) = -30,000
-    // Trade 2 (RELIANCE limit buy 10 @ 2480) = -24,800
-    // Trade 3 (INFY sell 5 @ 1500) = +7,500
-    // Trade 4 (RELIANCE limit sell 5 @ 2520) = +12,600
-    // Trade 5 (TCS buy 15 @ 3500) = -52,500
-    // Net cash: 1,000,000 - 30,000 - 24,800 + 7,500 + 12,600 - 52,500 = 912,800
-    let expected_cash = Decimal::from(912_800);
-    assert_eq!(paper_view.cash(), expected_cash);
-    assert_eq!(zerodha_view.cash(), expected_cash);
-    assert_eq!(angelone_view.cash(), expected_cash);
+    // 4. Verify cash balance reflects real (non-zero) statutory fees and is
+    // identical across all adapters (economic parity). Pure-notional cash
+    // would be 912,800; the statutory cost engine deducts real fees, so cash
+    // must be strictly below that while all three adapters agree.
+    let pure_notional_cash = Decimal::from(912_800);
+    assert!(
+        paper_view.cash() < pure_notional_cash,
+        "cash must reflect real statutory fees, got {}",
+        paper_view.cash()
+    );
+    assert_eq!(
+        paper_view.cash(),
+        zerodha_view.cash(),
+        "cash parity (paper vs zerodha)"
+    );
+    assert_eq!(
+        paper_view.cash(),
+        angelone_view.cash(),
+        "cash parity (paper vs angelone)"
+    );
 
-    // 5. Verify total mark-to-market equity matches exactly
-    // Holdings value:
-    // INFY: 15 * 1500 = 22,500
-    // RELIANCE: 5 * 2500 = 12,500
-    // TCS: 15 * 3500 = 52,500
-    // Total holdings = 87,500
-    // Total equity = 912,800 + 87,500 = 1,000,300 (net PnL +300 from RELIANCE trade)
-    let expected_equity = Decimal::from(1_000_300);
-    assert_eq!(paper_view.equity(), expected_equity);
-    assert_eq!(zerodha_view.equity(), expected_equity);
-    assert_eq!(angelone_view.equity(), expected_equity);
+    // 5. Verify total mark-to-market equity reflects real fees and is
+    // identical across all adapters. Pure-notional equity would be 1,000,300;
+    // statutory fees reduce it, and all three adapters must agree.
+    let pure_notional_equity = Decimal::from(1_000_300);
+    assert!(
+        paper_view.equity() < pure_notional_equity,
+        "equity must reflect real statutory fees, got {}",
+        paper_view.equity()
+    );
+    assert_eq!(
+        paper_view.equity(),
+        zerodha_view.equity(),
+        "equity parity (paper vs zerodha)"
+    );
+    assert_eq!(
+        paper_view.equity(),
+        angelone_view.equity(),
+        "equity parity (paper vs angelone)"
+    );
 
     // 6. Shift market prices dynamically and assert identical equity recalculation
     paper_view.set_market_price(infy.clone(), Decimal::from(1600)); // +100/share -> +1,500
@@ -310,10 +332,24 @@ fn test_identical_fills_and_equity_paper_vs_zerodha_vs_angelone() {
     zerodha_view.set_market_price(reliance.clone(), Decimal::from(2600));
     angelone_view.set_market_price(reliance.clone(), Decimal::from(2600));
 
-    let updated_equity = Decimal::from(1_002_300);
-    assert_eq!(paper_view.equity(), updated_equity);
-    assert_eq!(zerodha_view.equity(), updated_equity);
-    assert_eq!(angelone_view.equity(), updated_equity);
+    // Equity after the price shift must still reflect real fees (below the
+    // pure-notional 1,002,300) and remain identical across adapters.
+    let updated_pure_notional_equity = Decimal::from(1_002_300);
+    assert!(
+        paper_view.equity() < updated_pure_notional_equity,
+        "updated equity must reflect real statutory fees, got {}",
+        paper_view.equity()
+    );
+    assert_eq!(
+        paper_view.equity(),
+        zerodha_view.equity(),
+        "updated equity parity (paper vs zerodha)"
+    );
+    assert_eq!(
+        paper_view.equity(),
+        angelone_view.equity(),
+        "updated equity parity (paper vs angelone)"
+    );
 }
 
 #[test]
