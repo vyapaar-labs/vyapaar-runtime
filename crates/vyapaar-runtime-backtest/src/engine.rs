@@ -305,6 +305,8 @@ pub struct BacktestEngine<S: Strategy> {
     // Event-loop state
     current_date: Option<NaiveDate>,
     latest_prices: HashMap<InstrumentId, Price>,
+    /// Most recent bar event's open price per instrument, used by stop-fill gap-through modeling.
+    bar_opens: HashMap<InstrumentId, Price>,
     scrips_sold_today: HashSet<InstrumentId>,
     product_type: ProductType,
     /// Net signed quantity held per instrument (positive long, negative
@@ -387,6 +389,7 @@ impl<S: Strategy> BacktestEngine<S> {
             equity_curve: Vec::new(),
             current_date: None,
             latest_prices: HashMap::new(),
+            bar_opens: HashMap::new(),
             scrips_sold_today: HashSet::new(),
             product_type: config.product_type,
             open_positions: HashMap::new(),
@@ -536,6 +539,8 @@ impl<S: Strategy> BacktestEngine<S> {
                 }
             }
             MarketEvent::Bar(b) => {
+                // GAP-0002: cache the bar's open price for gap-through stop fills (E2).
+                self.bar_opens.insert(b.instrument.clone(), b.open);
                 self.latest_prices.insert(b.instrument.clone(), b.close);
             }
         }
@@ -612,8 +617,19 @@ impl<S: Strategy> BacktestEngine<S> {
         //    executes immediately unless the L2 book has nonzero latency
         //    configured, in which case it waits in `pending_orders` until a
         //    later event reaches its `ready_ts` (step 2.5 above).
+        // GAP-0002 (E3): conservative same-bar ordering — when a stop and a
+        // target exit for the same instrument are dispatched in one event
+        // batch, the stop (StopLoss/StopLimit) executes first. `partition`
+        // preserves relative order within each side of the split.
         let orders = self.runner.drain_orders();
-        for mut order in orders {
+        let (mut stops, others): (Vec<_>, Vec<_>) = orders.into_iter().partition(|order| {
+            matches!(
+                order.order_type,
+                OrderType::StopLoss(_) | OrderType::StopLimit { .. }
+            )
+        });
+        stops.extend(others);
+        for mut order in stops {
             if let (Some(sizer), Some(method)) =
                 (self.position_sizer.as_ref(), self.sizing_method.clone())
             {
@@ -670,6 +686,10 @@ impl<S: Strategy> BacktestEngine<S> {
     /// Execute an order (already risk-checked and latency-delayed, if
     /// applicable) with the canonical kokoro cost model and optional L2
     /// slippage.
+    ///
+    /// GAP-0002 E2/E3: the direct path (no L2 book) implements stop-fill
+    /// gap-through modeling and conservative fill selection; the L2 path
+    /// models its own book matching.
     fn execute_order(&mut self, order: OrderRequest, timestamp: DateTime<Utc>) {
         let instrument = &order.instrument;
         let current_price = match self.latest_prices.get(instrument) {
@@ -739,13 +759,71 @@ impl<S: Strategy> BacktestEngine<S> {
                 impact,
             )
         } else {
-            // Direct execution at current market price (no L2 simulation)
-            (
-                order.quantity.0,
-                current_price,
-                Decimal::ZERO,
-                Decimal::ZERO,
-            )
+            // Direct execution path (no L2 simulation).
+            // GAP-0002 (vyapaar-runtime/docs/gaps/0002-strategy-traps-pitfalls-and-statistical-validation.md):
+            // E2 — a triggered stop never fills better than its trigger, and when the bar
+            // OPENED through the stop trigger (overnight/intra-event gap), the fill is the
+            // open price. E3 — same-bar ordering is enforced at drain time (see run_events).
+            let bar_open = self.bar_opens.get(instrument).copied();
+            let fill_price = match order.order_type {
+                OrderType::StopLoss(trigger) => {
+                    let crossed = match order.side {
+                        OrderSide::Sell => {
+                            current_price.0 <= trigger.0
+                                || bar_open.is_some_and(|o| o.0 <= trigger.0)
+                        }
+                        OrderSide::Buy => {
+                            current_price.0 >= trigger.0
+                                || bar_open.is_some_and(|o| o.0 >= trigger.0)
+                        }
+                    };
+                    if !crossed {
+                        current_price
+                    } else {
+                        match order.side {
+                            OrderSide::Sell => match bar_open {
+                                Some(o) if o.0 < trigger.0 => o, // gapped down through the sell stop: fill at the open
+                                _ => trigger,
+                            },
+                            OrderSide::Buy => match bar_open {
+                                Some(o) if o.0 > trigger.0 => o, // gapped up through the buy stop
+                                _ => trigger,
+                            },
+                        }
+                    }
+                }
+                OrderType::StopLimit { trigger, limit } => {
+                    let crossed = match order.side {
+                        OrderSide::Sell => {
+                            current_price.0 <= trigger.0
+                                || bar_open.is_some_and(|o| o.0 <= trigger.0)
+                        }
+                        OrderSide::Buy => {
+                            current_price.0 >= trigger.0
+                                || bar_open.is_some_and(|o| o.0 >= trigger.0)
+                        }
+                    };
+                    if !crossed {
+                        current_price
+                    } else {
+                        let realized = match (order.side, bar_open) {
+                            (OrderSide::Sell, Some(o)) if o.0 < trigger.0 => o, // gap-down realized price
+                            (OrderSide::Buy, Some(o)) if o.0 > trigger.0 => o, // gap-up realized price
+                            _ => current_price,
+                        };
+                        let marketable = match order.side {
+                            OrderSide::Sell => realized.0 >= limit.0,
+                            OrderSide::Buy => realized.0 <= limit.0,
+                        };
+                        if !marketable {
+                            return; // gapped through a stop-LIMIT: the limit is never marketable
+                        }
+                        limit
+                    }
+                }
+                _ => current_price,
+            };
+            (order.quantity.0, fill_price, Decimal::ZERO, Decimal::ZERO)
         };
 
         if filled_qty <= Decimal::ZERO {
