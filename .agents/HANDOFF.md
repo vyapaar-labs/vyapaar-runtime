@@ -38,5 +38,32 @@ Date: 2026-11-09 · Full context: `/project1/vyapaar-labs/.agents/HANDOFF.md` (s
 - ADR 0018 order gate, algo registration in the executor, `TestBarReader` fixture bars, `service.rs` queue-full `RateLimited`, `live_quotes.rs::read_fallback`.
 - WebSocket tests must always give the awaited stream a timeout (a hung `ws_stream.next()` blocks the whole workspace run).
 
+## Stage 4 runtime-side (latest change, PLAN-0001)
+- **Full Vixie cron grammar in `JobScheduler::next_execution`**
+  (`crates/vyapaar-runtime-jobs/src/lib.rs`): evaluation delegates to the
+  `cron` crate (0.17) over a 6-field form, with `translate_dow_field` mapping
+  Vixie 0/7-Sunday dow into the crate's 1=Monday scheme and OR-combining
+  dom/dow exactly like cron (`* * * 13 * 5` = 13th OR Friday). Validation is
+  tightened up front: alphabetic/`@daily`-style tokens and out-of-range fields
+  are rejected at ingestion; `?` is accepted as a synonym of `*`. 12 tests in
+  `crates/vyapaar-runtime-jobs/tests/scheduler_cron_tests.rs`.
+- **Typed-free job/tool manifests**: `FileJournalWriter::write_manifest(&Value)`
+  flips an in-flight run's `manifest.json` (Queued -> Running) and
+  `finalize_value(&Value, &Value, &Value)` writes manifest/trades/metrics for
+  manifests that are *not* backtest runs — `kind: "job"` scheduled-run
+  manifests and `kind: "tool"` agent-tool manifests (CLI-side shapes:
+  `vyapaar-ui/.agents/HANDOFF.md`). `journal_tests.rs` extended to 7 tests.
+- CLI/agent half of Stage 4 landed in `vyapaar-ui` (`vyapaar-cli`): `vyapaar
+  jobs run/tick/logs` on `BoundedWorkerPool` + `FileJobRegistry`, agent
+  tool-call journals, approval-queue gating — see that repo's HANDOFF.
+
+## Gate status
+- `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
+- `cargo test --workspace --profile prod`: ✅ 117 targets, 445 passed, 0 failed
+- `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
+
 ## Immediate next step
-Stage 4 (CLI & Agent Jobs Unification) — wire `vyapaar jobs run/tick/logs` in `vyapaar-cli` to `BoundedWorkerPool` + journals, connect agent tool calls to run journals, and route budget-breach jobs to the approvals queue. Verification: end-to-end `vyapaar jobs add ... -> vyapaar jobs tick -> journal verified`.
+PLAN-0001 Stages 1–4 complete in this repo. Open follow-ups are tracked as
+GAP-0003 (broker wire transports) and `vyapaar-ui/docs/gaps/0002` (ui-core trade
+rows for replayable journals). Next repo work: PLAN-0002 (statistical gates) or
+consumer-driven Level 7; do not start these without a new batch session.
