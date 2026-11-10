@@ -7,7 +7,7 @@ use axum::extract::{Path, State};
 use axum::handler::Handler as _;
 use axum::http::StatusCode;
 use axum::response::{Json, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use vyapaar_runtime_api::{
     ApiResponse, Capabilities, CapabilitiesResponse, CompiledStrategy, OrdersRequest,
     ResponseEnvelope, StrategiesResponse, SweepRequest, VerifyStrategyRequest,
@@ -18,6 +18,11 @@ use crate::market::{self, ApiQuery};
 use crate::reports::{
     get_concentration_risk, get_equity_curve, get_fees_report, get_ledger, get_order_fills,
     get_portfolio_snapshots, get_position_audit, get_tax_report, get_weighted_average_cost,
+};
+use crate::trade_journal::{
+    get_trade_journal_accounts, get_trade_journal_calendar, get_trade_journal_compare,
+    get_trade_journal_notes, get_trade_journal_overview, get_trade_journal_trades,
+    patch_trade_journal_trade, post_trade_journal_account, post_trade_journal_note,
 };
 use crate::ws::ws_handler;
 use crate::{
@@ -163,6 +168,13 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/quotes", get(market::get_quotes))
         .route("/bars/:id", get(market::get_bars))
         .route("/depth/:id", get(market::get_depth))
+        // Market reference data (Phase 3): symbol profile + calendar, backed
+        // by vyapaar-data's symbol-profile / calendar ingestion.
+        .route(
+            "/market-data/symbol-profile/:id",
+            get(market::get_symbol_profile),
+        )
+        .route("/market-data/calendar", get(market::get_market_calendar))
         .route("/bars", post(ingest::post_bars))
         .route(
             "/trading-state",
@@ -226,6 +238,20 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/approval/reject", post(orders::post_reject_order))
         .route("/screener/scan", get(screener::get_screener_scan))
         .route("/journals/:id", get(runs::get_journal_by_id))
+        // Trade-performance journal (distinct from run/backtest journals and
+        // the operator journal): backed by vyapaar-ledger-performance.
+        .route("/trade-journal/accounts", get(get_trade_journal_accounts))
+        .route("/trade-journal/accounts", post(post_trade_journal_account))
+        .route("/trade-journal/overview", get(get_trade_journal_overview))
+        .route("/trade-journal/trades", get(get_trade_journal_trades))
+        .route(
+            "/trade-journal/trades/:id",
+            patch(patch_trade_journal_trade),
+        )
+        .route("/trade-journal/calendar", get(get_trade_journal_calendar))
+        .route("/trade-journal/notes", get(get_trade_journal_notes))
+        .route("/trade-journal/notes", post(post_trade_journal_note))
+        .route("/trade-journal/compare", get(get_trade_journal_compare))
         .route("/ws", get(ws_handler))
         .route("/ws/market", get(ws_handler))
         .layer(axum::middleware::from_fn(v1_headers))

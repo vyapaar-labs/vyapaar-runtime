@@ -23,6 +23,7 @@ vyapaar-runtime-config.workspace = true
 vyapaar-runtime-backtest.workspace = true
 vyapaar-ledger-journal.workspace = true
 vyapaar-ledger-portfolio.workspace = true
+vyapaar-ledger-performance.workspace = true
 vyapaar-runtime-testing.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -94,3 +94,17 @@ broker sessions is deferred.
 
 - `docs/migration-guide.md` decimated: sub-crate mapping table moved to `docs/design/code-migration-map.md`; verification commands moved to `docs/roadmap/migration-verification.md`; original `migration-guide.md` removed.
 - Code reference docs added: `code-actors.md`, `code-backtest.md`, `code-enhancer.md`, `code-jobs.md`, `code-api-rest.md`, `code-persistence.md`, `code-strategy.md`, `code-config-testing-feed.md`.
+
+## PLAN-0003 — REST endpoints for trade-journal & market reference data (implemented)
+- **`crates/vyapaar-runtime-api-rest/src/trade_journal.rs`** (new): Phase 1+2 trade-performance journal endpoints backed by `vyapaar-ledger-performance`:
+  - `GET/POST /trade-journal/accounts` (journal accounts, distinct from `/portfolio/accounts`)
+  - `GET /trade-journal/overview` (performance metrics + v1 edge score)
+  - `GET /trade-journal/trades` + `PATCH /trade-journal/trades/:id` (closed trades with annotations, cursor-paginated)
+  - `GET /trade-journal/calendar` (daily P&L heatmap)
+  - `GET/POST /trade-journal/notes` (day-keyed journal notes)
+  - `GET /trade-journal/compare` (two-sided account comparison)
+- **`crates/vyapaar-runtime-api-rest/src/market.rs`** (Phase 3): `GET /market-data/symbol-profile/:id` + `GET /market-data/calendar`, backed by in-memory sample stores pending the vyapaar-data → Rust FFI bridge (documented gap; `vyapaar-data` gaps 0001+0002 supply the real data).
+- Routes registered in `v1.rs` router; OpenAPI entries + `trade-journal`/`market-reference` tags added to `openapi.rs`.
+- `vyapaar-ledger-performance` added as a workspace + crate dependency.
+- `AppState` gained an optional `journal: Option<Arc<Mutex<JournalStore>>>` + `with_journal_store` builder.
+- Tests: `tests/trade_journal.rs` (12 tests), `tests/market_reference.rs` (5 tests). `cargo fmt --check`, `cargo clippy --all-targets --profile prod -- -D warnings`, `cargo test --workspace --profile prod` all clean.

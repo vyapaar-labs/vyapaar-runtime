@@ -66,6 +66,7 @@ pub struct PathItem {
     pub get: Option<Operation>,
     pub post: Option<Operation>,
     pub put: Option<Operation>,
+    pub patch: Option<Operation>,
     pub delete: Option<Operation>,
 }
 
@@ -122,6 +123,65 @@ pub struct Tag {
     pub description: String,
 }
 
+/// Builds an OpenAPI operation with a JSON request/response body.
+fn operation(
+    tag: &str,
+    summary: &str,
+    operation_id: &str,
+    parameters: Vec<Parameter>,
+    request_body: Option<bool>,
+    response_description: &str,
+) -> Operation {
+    Operation {
+        tags: vec![tag.to_string()],
+        summary: summary.to_string(),
+        operation_id: operation_id.to_string(),
+        parameters,
+        request_body: request_body.map(|required| RequestBody {
+            required,
+            content: BTreeMap::from([(
+                "application/json".to_string(),
+                MediaType {
+                    schema: schema_for!(serde_json::Value).schema.into(),
+                },
+            )]),
+        }),
+        responses: BTreeMap::from([(
+            "200".to_string(),
+            Response {
+                description: response_description.to_string(),
+                content: BTreeMap::from([(
+                    "application/json".to_string(),
+                    MediaType {
+                        schema: schema_for!(serde_json::Value).schema.into(),
+                    },
+                )]),
+            },
+        )]),
+        security: vec![SecurityRequirement {
+            scheme: BTreeMap::from([("Bearer".to_string(), vec!["read".to_string()])]),
+        }],
+    }
+}
+
+fn query_param(name: &str) -> Parameter {
+    Parameter {
+        name: name.to_string(),
+        r#in: "query".to_string(),
+        required: false,
+        schema: schema_for!(String).schema.into(),
+    }
+}
+
+fn path_param(name: &str) -> Parameter {
+    Parameter {
+        name: name.to_string(),
+        r#in: "path".to_string(),
+        required: true,
+        schema: schema_for!(String).schema.into(),
+    }
+}
+
 /// OpenAPI components (schemas, security schemes, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +223,7 @@ impl OpenApiDocument {
                 }),
                 post: None,
                 put: None,
+                patch: None,
                 delete: None,
             },
         );
@@ -194,6 +255,7 @@ impl OpenApiDocument {
                 }),
                 post: None,
                 put: None,
+                patch: None,
                 delete: None,
             },
         );
@@ -268,6 +330,7 @@ impl OpenApiDocument {
                     }],
                 }),
                 put: None,
+                patch: None,
                 delete: None,
             },
         );
@@ -278,6 +341,7 @@ impl OpenApiDocument {
                 get: None,
                 post: None,
                 put: None,
+                patch: None,
                 delete: Some(Operation {
                     tags: vec!["trading".to_string()],
                     summary: "Cancel an order".to_string(),
@@ -335,6 +399,7 @@ impl OpenApiDocument {
                 }),
                 post: None,
                 put: None,
+                patch: None,
                 delete: None,
             },
         );
@@ -364,6 +429,189 @@ impl OpenApiDocument {
                 }),
                 post: None,
                 put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Trade-performance journal endpoints (/trade-journal/*), backed by
+        // vyapaar-ledger-performance. Journal accounts are distinct from
+        // /portfolio/accounts (live OMS/trading accounts).
+        paths.insert(
+            "/trade-journal/accounts".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trade-journal",
+                    "List journal accounts",
+                    "listTradeJournalAccounts",
+                    vec![],
+                    None,
+                    "List of journal accounts",
+                )),
+                post: Some(operation(
+                    "trade-journal",
+                    "Create a journal account",
+                    "createTradeJournalAccount",
+                    vec![],
+                    Some(true),
+                    "Created journal account",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/trade-journal/overview".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trade-journal",
+                    "Performance metrics and edge score",
+                    "getTradeJournalOverview",
+                    vec![
+                        query_param("from"),
+                        query_param("to"),
+                        query_param("compare"),
+                    ],
+                    None,
+                    "Overview metrics and edge score",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/trade-journal/trades".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trade-journal",
+                    "List closed trades with annotations",
+                    "listTradeJournalTrades",
+                    vec![
+                        query_param("from"),
+                        query_param("to"),
+                        query_param("limit"),
+                        query_param("cursor"),
+                    ],
+                    None,
+                    "Cursor-paginated closed trades",
+                )),
+                post: None,
+                put: None,
+                delete: None,
+                patch: Some(operation(
+                    "trade-journal",
+                    "Set a trade's annotation",
+                    "patchTradeJournalTrade",
+                    vec![path_param("id")],
+                    Some(true),
+                    "Updated trade annotation",
+                )),
+            },
+        );
+        paths.insert(
+            "/trade-journal/calendar".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trade-journal",
+                    "Daily P&L heatmap for a month",
+                    "getTradeJournalCalendar",
+                    vec![query_param("month")],
+                    None,
+                    "Monthly P&L calendar",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/trade-journal/notes".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trade-journal",
+                    "List day-keyed journal notes",
+                    "listTradeJournalNotes",
+                    vec![query_param("account"), query_param("limit")],
+                    None,
+                    "Journal notes",
+                )),
+                post: Some(operation(
+                    "trade-journal",
+                    "Create or replace a journal note",
+                    "createTradeJournalNote",
+                    vec![],
+                    Some(true),
+                    "Created journal note",
+                )),
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/trade-journal/compare".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "trade-journal",
+                    "Compare two performances",
+                    "compareTradeJournalAccounts",
+                    vec![
+                        query_param("accountA"),
+                        query_param("accountB"),
+                        query_param("account"),
+                        query_param("mode"),
+                    ],
+                    None,
+                    "Two-sided metrics comparison",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+
+        // Market reference data endpoints (/market-data/*), backed by
+        // vyapaar-data's calendar and symbol-profile ingestion.
+        paths.insert(
+            "/market-data/symbol-profile/{id}".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "market-reference",
+                    "Company symbol profile / fundamentals",
+                    "getSymbolProfile",
+                    vec![path_param("id")],
+                    None,
+                    "Symbol profile",
+                )),
+                post: None,
+                put: None,
+                patch: None,
+                delete: None,
+            },
+        );
+        paths.insert(
+            "/market-data/calendar".to_string(),
+            PathItem {
+                get: Some(operation(
+                    "market-reference",
+                    "Economic / earnings / dividends / splits / IPO calendar",
+                    "getMarketCalendar",
+                    vec![
+                        query_param("from"),
+                        query_param("to"),
+                        query_param("category"),
+                    ],
+                    None,
+                    "Calendar events",
+                )),
+                post: None,
+                put: None,
+                patch: None,
                 delete: None,
             },
         );
@@ -444,6 +692,17 @@ impl OpenApiDocument {
                 Tag {
                     name: "meta".to_string(),
                     description: "Meta endpoints (schema, health, capabilities)".to_string(),
+                },
+                Tag {
+                    name: "trade-journal".to_string(),
+                    description:
+                        "Trade-performance journal (annotations, metrics, calendar, comparison)"
+                            .to_string(),
+                },
+                Tag {
+                    name: "market-reference".to_string(),
+                    description: "Market reference data (symbol profile, economic calendar)"
+                        .to_string(),
                 },
             ],
         }

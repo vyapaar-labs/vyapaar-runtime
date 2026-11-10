@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use vyapaar_core::Currency;
 use vyapaar_core::rust_decimal::Decimal;
+use vyapaar_ledger_performance::store::JournalStore;
 use vyapaar_risk::RiskEngine;
 use vyapaar_runtime_api::{ErrorDetail, StrategyCatalog, TradingState};
 use vyapaar_runtime_feed::ports::{BarReader, DepthReader, InstrumentMaster, QuoteReader};
@@ -69,6 +70,9 @@ pub struct AppState {
     /// When enabled, `POST /orders` is held here until approved by an operator.
     /// Cancel and modify bypass the queue.
     pub approval_queue: Option<Arc<ApprovalQueue>>,
+    /// In-memory trade-performance journal store backing `/trade-journal/*`.
+    /// `None` until configured with [`AppState::with_journal_store`].
+    pub journal: Option<Arc<Mutex<JournalStore>>>,
     /// The write ledger every risk-approved placement lands in (E11-S7, ADR 0019
     /// decision 3). `GET /orders` reads it; a restart empties it.
     pub orders: OrderLedger,
@@ -116,6 +120,7 @@ impl AppState {
             trading_state: Arc::new(RwLock::new(TradingState::Active)),
             risk_engine: Arc::new(Mutex::new(engine)),
             approval_queue: None,
+            journal: None,
             orders: OrderLedger::default(),
             exec: crate::exec::ExecGateway::default_sim(),
             live: None,
@@ -164,6 +169,13 @@ impl AppState {
     /// Cancel and modify bypass the queue. `max_size` bounds the queue (default 100).
     pub fn with_approval_queue(mut self, max_size: usize) -> Self {
         self.approval_queue = Some(Arc::new(ApprovalQueue::new(max_size)));
+        self
+    }
+
+    /// Configures the in-memory trade-performance journal store backing
+    /// `/trade-journal/*` (annotations, metrics, calendar, comparison).
+    pub fn with_journal_store(mut self, store: JournalStore) -> Self {
+        self.journal = Some(Arc::new(Mutex::new(store)));
         self
     }
 

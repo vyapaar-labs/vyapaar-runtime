@@ -32,6 +32,7 @@ vyapaar-ledger = { path = "../vyapaar-ledger/crates/vyapaar-ledger" }
 vyapaar-ledger-portfolio = { path = "../vyapaar-ledger/crates/vyapaar-ledger-portfolio" }
 vyapaar-ledger-oms = { path = "../vyapaar-ledger/crates/vyapaar-ledger-oms" }
 vyapaar-ledger-journal = { path = "../vyapaar-ledger/crates/vyapaar-ledger-journal" }
+vyapaar-ledger-performance = { path = "../vyapaar-ledger/crates/vyapaar-ledger-performance" }
 vyapaar-runtime-actors = { path = "crates/vyapaar-runtime-actors" }
 vyapaar-runtime-api = { path = "crates/vyapaar-runtime-api" }
 vyapaar-runtime-api-rest = { path = "crates/vyapaar-runtime-api-rest" }

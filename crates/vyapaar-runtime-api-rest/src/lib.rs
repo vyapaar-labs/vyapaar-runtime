@@ -54,6 +54,7 @@ mod service;
 mod state;
 mod streams;
 pub mod ticks_file;
+mod trade_journal;
 mod trades;
 mod trading_state;
 mod user_doc;

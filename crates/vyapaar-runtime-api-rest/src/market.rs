@@ -14,7 +14,8 @@ use axum::{
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Json, Response},
 };
-use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use std::sync::OnceLock;
 use vyapaar_core::rust_decimal::Decimal;
 use vyapaar_runtime_api::{
     ApiResponse, BarsQuery, BarsResponse, DepthLevel, DepthQuery, DepthResponse, ErrorCode,
@@ -368,4 +369,222 @@ pub(crate) async fn get_depth(
         }
         Err(error) => port_failure(error),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — market reference data (symbol profile + calendar).
+//
+// These endpoints are backed by vyapaar-data's calendar (gap 0001) and
+// symbol-profile (gap 0002) ingestion. vyapaar-data is a Python service and
+// is not yet FFI-wired into this Rust REST server, so the stores below are
+// populated with illustrative sample data. Once the vyapaar-data → Rust FFI
+// bridge exists, these handlers should read from it instead. The routes and
+// response shapes match
+// vyapaar-runtime/docs/plans/0003-trade-journal-and-market-reference-rest-endpoints.md.
+
+/// One symbol profile (vela `public-get-symbol-profile` shape).
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct SymbolProfileDto {
+    pub symbol: String,
+    pub name: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ceo: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub employees: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub website: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub headquarters: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub industry: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sector: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipo_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub market_cap: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub beta: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_dividend: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range_52_week: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub average_volume: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_etf: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_actively_trading: Option<bool>,
+}
+
+/// One calendar event (vela calendar shape).
+#[derive(Debug, Clone, Serialize)]
+pub struct CalendarEventDto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instrument: Option<String>,
+    pub scheduled_at: String,
+    pub country: String,
+    pub currency: String,
+    pub category: String,
+    pub event_name: String,
+    pub impact_level: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forecast: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prior: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MarketCalendarResponse {
+    pub events: Vec<CalendarEventDto>,
+}
+
+/// Sample symbol profiles — placeholder until the vyapaar-data FFI bridge
+/// backs this endpoint with real ingestion (gap 0002).
+fn sample_profiles() -> Vec<SymbolProfileDto> {
+    vec![
+        SymbolProfileDto {
+            symbol: "NSE:RELIANCE".to_string(),
+            name: "Reliance Industries Ltd.".to_string(),
+            description: "Integrated energy and conglomerate.".to_string(),
+            ceo: Some("Mukesh Ambani".to_string()),
+            sector: Some("Energy".to_string()),
+            industry: Some("Oil & Gas".to_string()),
+            market_cap: Some("1800000000000.00".to_string()),
+            beta: Some("0.95".to_string()),
+            is_actively_trading: Some(true),
+            ..Default::default()
+        },
+        SymbolProfileDto {
+            symbol: "NSE:TCS".to_string(),
+            name: "Tata Consultancy Services".to_string(),
+            description: "IT services and consulting.".to_string(),
+            sector: Some("Technology".to_string()),
+            industry: Some("IT Services".to_string()),
+            market_cap: Some("1400000000000.00".to_string()),
+            beta: Some("0.78".to_string()),
+            is_actively_trading: Some(true),
+            ..Default::default()
+        },
+    ]
+}
+
+/// Sample calendar events — placeholder until the vyapaar-data FFI bridge
+/// backs this endpoint with real ingestion (gap 0001).
+fn sample_calendar_events() -> Vec<CalendarEventDto> {
+    vec![
+        CalendarEventDto {
+            instrument: Some("NSE:RELIANCE-EQ".to_string()),
+            scheduled_at: "2026-11-10T06:30:00Z".to_string(),
+            country: "IN".to_string(),
+            currency: "INR".to_string(),
+            category: "Earnings".to_string(),
+            event_name: "Reliance Industries Q3 FY27 Earnings".to_string(),
+            impact_level: "High".to_string(),
+            actual: None,
+            forecast: Some("12400.00".to_string()),
+            prior: Some("11850.00".to_string()),
+            period_label: Some("Q3 FY27".to_string()),
+        },
+        CalendarEventDto {
+            instrument: None,
+            scheduled_at: "2026-11-16T06:00:00Z".to_string(),
+            country: "US".to_string(),
+            currency: "USD".to_string(),
+            category: "Economic".to_string(),
+            event_name: "US Retail Sales MoM".to_string(),
+            impact_level: "High".to_string(),
+            actual: None,
+            forecast: Some("0.40".to_string()),
+            prior: Some("0.20".to_string()),
+            period_label: Some("Oct".to_string()),
+        },
+    ]
+}
+
+static PROFILES: OnceLock<Vec<SymbolProfileDto>> = OnceLock::new();
+static CALENDAR_EVENTS: OnceLock<Vec<CalendarEventDto>> = OnceLock::new();
+
+fn profiles_store() -> &'static Vec<SymbolProfileDto> {
+    PROFILES.get_or_init(sample_profiles)
+}
+
+fn calendar_events_store() -> &'static Vec<CalendarEventDto> {
+    CALENDAR_EVENTS.get_or_init(sample_calendar_events)
+}
+
+/// `GET /market-data/symbol-profile/:id` — company fundamentals.
+///
+/// Backed by vyapaar-data's symbol-profile ingestion (gap 0002). Until the
+/// vyapaar-data → Rust FFI bridge is wired, this serves illustrative sample
+/// data.
+pub(crate) async fn get_symbol_profile(
+    State(_state): State<Arc<AppState>>,
+    Path(raw): Path<String>,
+) -> Response {
+    let id = match parse_instrument_id(&raw) {
+        Ok(id) => id,
+        Err(detail) => return unprocessable(detail),
+    };
+    let profile = profiles_store().iter().find(|p| p.symbol == id.to_string());
+    match profile {
+        Some(p) => success(p.clone()),
+        None => instrument_not_found(&id),
+    }
+}
+
+/// `GET /market-data/calendar` — economic/earnings/dividends/splits/IPO events.
+///
+/// Backed by vyapaar-data's calendar ingestion (gap 0001). Until the
+/// vyapaar-data → Rust FFI bridge is wired, this serves illustrative sample
+/// data.
+pub(crate) async fn get_market_calendar(
+    State(_state): State<Arc<AppState>>,
+    ApiQuery(query): ApiQuery<MarketCalendarQuery>,
+) -> Response {
+    let events: Vec<CalendarEventDto> = calendar_events_store()
+        .iter()
+        .filter(|e| {
+            if let Some(from) = &query.from {
+                if e.scheduled_at.as_str() < from.as_str() {
+                    return false;
+                }
+            }
+            if let Some(to) = &query.to {
+                if e.scheduled_at.as_str() > to.as_str() {
+                    return false;
+                }
+            }
+            if let Some(cat) = &query.category {
+                if e.category != *cat {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect();
+    success(MarketCalendarResponse { events })
+}
+
+/// `GET /market-data/calendar` query parameters.
+#[derive(Debug, Deserialize)]
+pub struct MarketCalendarQuery {
+    #[serde(default)]
+    pub from: Option<String>,
+    #[serde(default)]
+    pub to: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
 }
