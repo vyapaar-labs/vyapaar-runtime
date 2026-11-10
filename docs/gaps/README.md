@@ -9,6 +9,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
+| 0004 | Profile schema has no room for watchlists metadata, portfolios, risk profiles, or workspaces | `vyapaar-runtime-api::profile`, `vyapaar-runtime-api-rest::profile_store` | Open — see `docs/gaps/0004-profile-schema-missing-watchlists-portfolios-risk-profiles-workspaces.md` |
 
 ## Closed Gaps
 
