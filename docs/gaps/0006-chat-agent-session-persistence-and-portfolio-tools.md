@@ -7,8 +7,11 @@
 `crates/vyapaar-runtime-api-rest/src/chat.rs` wires the `vyapaar-agent-chat` conversational
 engine to `GET /ws/chat`, backed by `vyapaar-agent-llm`'s local Candle-GGUF provider (or an
 OpenAI/Ollama-compatible fallback) and the read-only tool catalog in
-`vyapaar-agent-chat-tools::catalog::register_read_only_tools`. Three pieces of that wiring are
-stand-ins for v1:
+`vyapaar-agent-chat-tools::catalog::register_read_only_tools`. Two pieces of that wiring are
+still stand-ins for v1 (the third — market/screener tools — closed via
+`crates/vyapaar-runtime-api-rest/src/chat_market.rs`'s `FeedMarketReader`/`FeedSnapshotSource`;
+see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md for what those still
+approximate):
 
 1. **Session store is in-memory only.** `ChatRuntime::from_env` builds the `ChatAgent` with
    `vyapaar_agent_chat::InMemorySessionStore`, not `vyapaar-runtime-persistence`'s
@@ -29,23 +32,15 @@ stand-ins for v1:
    `Err(PortError::unavailable(...))` from every method (`accounts`, `positions`, `tax_lots`,
    `cash`, `orders`, `realized_pnl`) rather than fabricating empty data that an LLM could mistake
    for "this account really has zero positions."
-3. **Market/screener tools always answer empty.** `RuntimeMarketReader::new()` and
-   `RuntimeSnapshotSource::new()` (both `#[derive(Default)]` from
-   `vyapaar_runtime_api::chat_adapters`) are constructed with nothing populating them — no code
-   anywhere calls their `set_quote`/`set_history`/`set_universe`/etc. setters. Every market-data,
-   indicator, screener, and regime tool call the chat agent makes will return empty results until
-   something wires live/historical data into these readers.
 
 ## Why
 
 The goal of this pass was to stand up the WebSocket bridge and wire the already-built chat engine
-and tool catalog end to end, using what `AppState` already exposes. None of `AppState`'s existing
-ports are ledger-repository handles or live-data-backed market readers, and wiring either up is a
-separate, larger piece of work (a `Database` connection pool for session persistence; a decision
-on which `vyapaar-ledger` repository implementation `AppState` should hold and how it gets
-populated from the run/order flow for the portfolio tools; a feed into `RuntimeMarketReader`/
-`RuntimeSnapshotSource` from the existing market-data actor broadcast or the catalog bar reader
-for the market tools).
+and tool catalog end to end, using what `AppState` already exposes. Neither of `AppState`'s
+remaining gaps here is a ledger-repository handle, and wiring one up is a separate, larger piece
+of work (a `Database` connection pool for session persistence; a decision on which
+`vyapaar-ledger` repository implementation `AppState` should hold and how it gets populated from
+the run/order flow for the portfolio tools).
 
 ## How to close it
 
@@ -58,6 +53,3 @@ for the market tools).
   `AccountRepository + PositionRepository + OrderRepository + LedgerRepository`, construct it in
   `AppState`, and replace `StubPortfolioReader` with
   `vyapaar_runtime_api::chat_adapters::LedgerPortfolioReader::from_combined(..)`.
-- Market/screener tools: call `RuntimeMarketReader`/`RuntimeSnapshotSource`'s setters from the
-  market-data broadcast consumer or the catalog bar/quote readers `AppState` already holds, so the
-  chat tools answer with real data instead of empty results.

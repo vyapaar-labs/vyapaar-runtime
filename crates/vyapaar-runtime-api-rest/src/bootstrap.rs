@@ -447,7 +447,14 @@ pub fn prepare_server(config: &ServeConfig) -> Result<PreparedServer> {
     // `GET /ws/chat` only comes up when a local GGUF model (`VYAPAAR_GGUF_PATH`) or an
     // OpenAI-compatible endpoint (`VYAPAAR_LLM_BASE_URL`) is configured; otherwise `AppState.chat`
     // stays `None` and the route answers a clear "not configured" error instead of panicking.
-    if let Some(chat) = crate::chat::ChatRuntime::from_env().context("configuring chat agent")? {
+    if let Some(chat) = crate::chat::ChatRuntime::from_env(
+        state.instruments.clone(),
+        state.bars.clone(),
+        state.quotes.clone(),
+        state.risk_engine.clone(),
+    )
+    .context("configuring chat agent")?
+    {
         state = state.with_chat_agent(chat);
     }
 

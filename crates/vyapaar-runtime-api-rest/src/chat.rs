@@ -5,8 +5,11 @@
 //! OpenAI/Ollama-compatible fallback) and the read-only tool ports in
 //! `vyapaar_runtime_api::chat_adapters`.
 //!
-//! Client -> server messages are `{"text": "..."}`; everything the agent emits for the turn
-//! streams back as the chat engine's own `SessionEvent` JSON, one WebSocket text frame per event.
+//! `GET /ws/chat?workspace=<id>` scopes the session to that workspace ([`ChatQuery`]) — connecting
+//! again with the same `workspace` resumes its most recent session rather than starting a new
+//! one (`SessionSelector::Continue`). Client -> server messages are `{"text": "..."}`; everything
+//! the agent emits for the turn streams back as the chat engine's own `SessionEvent` JSON, one
+//! WebSocket text frame per event.
 //!
 //! v1 scope (see `docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md`):
 //! - Sessions are in-memory only (`InMemorySessionStore`); a server restart loses them.
@@ -15,13 +18,15 @@
 //!   portfolio-backed tool call returns `PortError::unavailable` rather than a real position or
 //!   P&L (deliberately an explicit error, not an empty success, so the model can't mistake "not
 //!   wired up" for "this account has zero positions").
-//! - `RuntimeMarketReader`/`RuntimeSnapshotSource` are constructed empty; nothing calls their
-//!   setters, so market/screener tool calls also answer empty until that is wired up.
+//!
+//! Market/screener tools read through live data via [`crate::chat_market::FeedMarketReader`]/
+//! [`crate::chat_market::FeedSnapshotSource`]; a few of their fields still approximate or report
+//! unavailable (see `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::{Query, State};
 use axum::response::Response;
 use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
@@ -37,9 +42,11 @@ use vyapaar_agent_llm::candle_gguf::{CandleGgufConfig, CandleGgufProvider, ENV_G
 use vyapaar_core::{AccountId, InstrumentId, Money};
 use vyapaar_ledger::TaxLot;
 use vyapaar_ledger::repository::OrderRecord;
-use vyapaar_runtime_api::chat_adapters::{RuntimeMarketReader, RuntimeSnapshotSource};
+use vyapaar_risk::RiskEngine;
+use vyapaar_runtime_feed::ports::{BarReader, InstrumentMaster, QuoteReader};
 
 use crate::AppState;
+use crate::chat_market::{FeedMarketReader, FeedSnapshotSource};
 
 /// Stand-in portfolio reader used until `AppState` exposes a ledger-repository handle to build
 /// `vyapaar_runtime_api::chat_adapters::LedgerPortfolioReader::from_combined` from (see
@@ -48,8 +55,7 @@ use crate::AppState;
 /// P&L that could be mistaken for a real (zero) answer.
 struct StubPortfolioReader;
 
-const PORTFOLIO_READER_GAP: &str =
-    "portfolio reader not wired up; see docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md";
+const PORTFOLIO_READER_GAP: &str = "portfolio reader not wired up; see docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md";
 
 #[async_trait::async_trait]
 impl PortfolioReader for StubPortfolioReader {
@@ -123,7 +129,17 @@ impl ChatRuntime {
     /// Builds a [`ChatRuntime`] from environment variables if either a local GGUF model or an
     /// OpenAI-compatible endpoint is configured; returns `Ok(None)` when neither is set, so the
     /// caller leaves `AppState::chat` as `None` instead of failing server boot.
-    pub fn from_env() -> anyhow::Result<Option<Self>> {
+    ///
+    /// `instruments`/`bars`/`quotes`/`risk_engine` are the same ports `AppState` already serves
+    /// `/market-data/*` from — this is how `FeedMarketReader`/`FeedSnapshotSource` answer the
+    /// chat tool catalog's market/screener tools with real data (closes the market/screener
+    /// stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
+    pub fn from_env(
+        instruments: Arc<dyn InstrumentMaster>,
+        bars: Arc<dyn BarReader>,
+        quotes: Arc<dyn QuoteReader>,
+        risk_engine: Arc<Mutex<RiskEngine>>,
+    ) -> anyhow::Result<Option<Self>> {
         if !llm_configured() {
             return Ok(None);
         }
@@ -133,11 +149,14 @@ impl ChatRuntime {
         // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:
         // AppState has no ledger-repository handle for LedgerPortfolioReader::from_combined.
         let portfolio: Arc<dyn PortfolioReader> = Arc::new(StubPortfolioReader);
-        // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:
-        // constructed empty, nothing calls these readers' setters yet.
-        let market: Arc<dyn MarketReader> = Arc::new(RuntimeMarketReader::new());
+        let market: Arc<dyn MarketReader> = Arc::new(FeedMarketReader::new(
+            instruments.clone(),
+            bars,
+            quotes,
+            risk_engine,
+        ));
         let snapshots: Arc<dyn vyapaar_agent_chat_tools::ports::snapshot::SnapshotSource> =
-            Arc::new(RuntimeSnapshotSource::new());
+            Arc::new(FeedSnapshotSource::new(instruments));
         vyapaar_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
@@ -162,17 +181,35 @@ struct ChatClientMessage {
     text: String,
 }
 
-/// Upgrades an HTTP connection to a WebSocket bound to one fresh chat-agent session.
+/// Query params accepted on `GET /ws/chat`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChatQuery {
+    /// Workspace identifier the session is scoped to. Each distinct workspace gets its own
+    /// session (and, once `SqlxSessionStore` lands per `docs/gaps/0006`, its own persisted
+    /// history) — connections with the same `workspace` resume the most recent session for it
+    /// rather than starting a new one every time (`SessionSelector::Continue`, not `New`).
+    /// Omitted/blank falls back to a fixed `"default"` scope, matching pre-workspace-scoping
+    /// behavior for any caller that doesn't pass one yet.
+    workspace: Option<String>,
+}
+
+/// Upgrades an HTTP connection to a WebSocket bound to one chat-agent session, scoped to the
+/// requested workspace (`?workspace=<id>`).
 pub async fn chat_ws_handler(
     ws: WebSocketUpgrade,
     State(app_state): State<Arc<AppState>>,
+    Query(query): Query<ChatQuery>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_chat_socket(socket, app_state))
+    let scope_name = query
+        .workspace
+        .filter(|w| !w.trim().is_empty())
+        .unwrap_or_else(|| "default".to_string());
+    ws.on_upgrade(move |socket| handle_chat_socket(socket, app_state, scope_name))
 }
 
 /// Handles one chat WebSocket connection: client text frames are submitted as turns, and every
 /// session event the agent emits streams back as a JSON text frame.
-async fn handle_chat_socket(socket: WebSocket, state: Arc<AppState>) {
+async fn handle_chat_socket(socket: WebSocket, state: Arc<AppState>, scope_name: String) {
     let (mut sender, mut receiver) = socket.split();
 
     let Some(chat) = state.chat.clone() else {
@@ -186,8 +223,8 @@ async fn handle_chat_socket(socket: WebSocket, state: Arc<AppState>) {
 
     let (handle, mut events) = match chat
         .agent
-        .open(SessionSelector::New(SessionScope::new(
-            "web-chat",
+        .open(SessionSelector::Continue(SessionScope::new(
+            &scope_name,
             RuntimeMode::Live,
         )))
         .await
