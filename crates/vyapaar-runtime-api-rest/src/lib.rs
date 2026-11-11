@@ -31,6 +31,7 @@ mod bar_pump;
 pub mod bootstrap;
 mod caller;
 mod catalog;
+pub mod chat;
 mod dispatch;
 mod exec;
 mod executor;
@@ -75,6 +76,7 @@ pub use bootstrap::{
     run_server_blocking, to_api_trading_state,
 };
 pub use catalog::{CATALOG_DIR, CatalogBars, CatalogLoadError, load_catalog};
+pub use chat::{ChatRuntime, chat_ws_handler};
 pub use dispatch::{DispatchError, build_target, dispatch, dispatch_stream};
 pub use exec::NextOpenSim;
 pub use executor::BacktestExecutor;

@@ -337,6 +337,9 @@ pub const ROUTE_SCOPES: &[(&str, &str, RouteScope)] = &[
     // WebSocket routes: public
     ("GET", "/ws", RouteScope::Public),
     ("GET", "/ws/market", RouteScope::Public),
+    // Chat WebSocket: hits a real LLM, unlike the public /ws and /ws/market feeds, so it
+    // requires any valid token rather than being public.
+    ("GET", "/ws/chat", RouteScope::Authenticated),
     // Additional research / run routes
     ("GET", "/backtests", RouteScope::Required("research")),
     ("GET", "/sweeps", RouteScope::Required("research")),

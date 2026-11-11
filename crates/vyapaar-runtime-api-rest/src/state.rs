@@ -92,6 +92,12 @@ pub struct AppState {
     /// Broadcast channel for live market ticks from MarketDataActor.
     /// Zero-polling WebSocket gateway subscribers clone this receiver directly.
     pub market_data_broadcast_tx: Option<tokio::sync::broadcast::Sender<vyapaar_core::Tick>>,
+    /// The local-LLM chat agent runtime behind `GET /ws/chat`; `None` until configured
+    /// ([`AppState::with_chat_agent`]), which only happens when a local GGUF model or an
+    /// OpenAI-compatible endpoint is configured via environment variables
+    /// ([`crate::chat::ChatRuntime::from_env`]). The route answers a clear error rather than
+    /// panicking when this is `None`.
+    pub chat: Option<Arc<crate::chat::ChatRuntime>>,
 }
 
 impl AppState {
@@ -128,6 +134,7 @@ impl AppState {
             execution: vyapaar_runtime_config::ExecutionConfig::default(),
             bar_ingest: Arc::default(),
             market_data_broadcast_tx: None,
+            chat: None,
         }
     }
 
@@ -160,6 +167,15 @@ impl AppState {
     /// Replaces the strategy catalog.
     pub fn with_strategies(mut self, strategies: StrategyCatalog) -> Self {
         self.strategies = Arc::new(Mutex::new(strategies));
+        self
+    }
+
+    /// Attaches the local-LLM chat agent runtime behind `GET /ws/chat`. Call it at start-up
+    /// ([`crate::bootstrap::prepare_server`]) with [`crate::chat::ChatRuntime::from_env`]'s
+    /// result; leave it unset (the default `None`) to serve `/ws/chat` with a clear
+    /// "not configured" error instead of a working chat agent.
+    pub fn with_chat_agent(mut self, chat: crate::chat::ChatRuntime) -> Self {
+        self.chat = Some(Arc::new(chat));
         self
     }
 
