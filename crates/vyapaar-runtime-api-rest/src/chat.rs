@@ -23,7 +23,9 @@
 //! [`crate::chat_market::FeedSnapshotSource`]; a few of their fields still approximate or report
 //! unavailable (see `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`).
 //! The price-alert tools write the caller's `Profile.alerts` document through the profiles
-//! store ([`crate::chat_alerts::ProfileAlertStore`], agent plan 0006 Phase 2).
+//! store ([`crate::chat_alerts::ProfileAlertStore`], agent plan 0006 Phase 2). The news/filings
+//! content tools (agent plan 0006 Phase 3) answer explicit gap citations through
+//! [`crate::chat_content::FeedContentReader`] until their data sources are bridged in.
 
 use std::sync::{Arc, Mutex};
 
@@ -164,10 +166,16 @@ impl ChatRuntime {
         ));
         let snapshots: Arc<dyn vyapaar_agent_chat_tools::ports::snapshot::SnapshotSource> =
             Arc::new(FeedSnapshotSource::new(instruments));
+        // News/filings content tools (agent plan 0006 Phase 3): no reachable data source
+        // yet — `FeedContentReader` answers the explicit gap citations instead of
+        // fabricated empty results (see `crate::chat_content`).
+        let content: Arc<dyn vyapaar_agent_chat_tools::ports::content::ContentReader> =
+            Arc::new(crate::chat_content::FeedContentReader::new());
         vyapaar_agent_chat_tools::catalog::register_read_only_tools(
             &mut registry,
             portfolio,
             market,
+            content,
             Some(snapshots),
         );
 

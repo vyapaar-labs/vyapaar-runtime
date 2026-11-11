@@ -1,9 +1,9 @@
 # HANDOFF — vyapaar-runtime
 
-**Date**: 2026-11-11 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
+**Date**: 2026-11-12 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `vyapaar-labs` superproject.
 
-## Gate status — ✅ GREEN (2026-11-11)
+## Gate status — ✅ GREEN (2026-11-12)
 
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
@@ -12,6 +12,15 @@
 
 ## Phase / Slice Status
 
+- **Agent plan 0006 Phase 3 (news/filings chat tools) — wiring implemented 2026-11-12**: new
+  `crates/vyapaar-runtime-api-rest/src/chat_content.rs::FeedContentReader` implements
+  `vyapaar-agent-chat-tools`'s new `ContentReader` port with honest `PortError::unavailable`
+  stubs — news cites `vyapaar-data/docs/gaps/0006-news-ingestion.md` (no source anywhere),
+  filings cite `vyapaar-data/docs/gaps/0007-filings-rust-bridge.md` (ingested in Python, closed
+  gap 0003, but no Rust-consumer bridge — same pending bridge as the `market.rs` sample stores).
+  Registered in `ChatRuntime::from_env` via the main `register_read_only_tools` bundle
+  (catalogue count 15 → 17 upstream). Tracked as item 7 of `docs/gaps/0007-*.md` (retitled to
+  cover the content adapter).
 - **Agent plan 0006 Phase 2 (price alerts) — storage decision + wiring implemented
   2026-11-11**: the storage decision the plan demanded: **no new store**. Per
   `docs/gaps/0004-*.md`'s profile-schema precedent (alerts were explicitly closed against the
@@ -46,11 +55,12 @@
 
 ## Immediate Next Step
 
-Support `vyapaar-agent` plan 0006 Phase 3 (news/filings search tools) once its upstream check
-against `vyapaar-data` (filings reader, closed gap 0003) decides tool-layer-only vs new-gap.
-Plan 0004 Phase 4 (real block/bulk deal data) remains blocked on `vyapaar-data` gap 0005. When
-chat sessions gain bearer identity (`docs/gaps/0006`), switch `ProfileAlertStore::for_user` to
-the connection's `token_id`.
+Agent plan 0006 Phase 3 is done (content tools wired; upstream verdict recorded — filings
+Python-only, news nothing). Phase 4 stays blocked on its own gaps (options-chain in
+`vyapaar-market`, corporate-actions in `vyapaar-data` — research-verify, then file, per agent
+plan 0006 §4). Plan 0004 Phase 4 (real block/bulk deal data) remains blocked on `vyapaar-data`
+gap 0005. When chat sessions gain bearer identity (`docs/gaps/0006`), switch
+`ProfileAlertStore::for_user` to the connection's `token_id`.
 
 ## Do not regress
 
@@ -83,3 +93,7 @@ the connection's `token_id`.
 - `vyapaar_runtime_api::chat_adapters::RuntimeMarketReader` is a seedable test adapter: empty
   block-deals store ⇒ `PortError::unavailable` (gap 0005 citation); seeded ⇒ filter matches.
   Same honest-stub shape as `FeedMarketReader` (gap 0007 item 6).
+- `chat_content.rs::FeedContentReader` takes no ports and answers every call with an explicit
+  `unavailable` (gap 0006 news / gap 0007 filings citations): `ContentReader` is a new port with
+  exactly one implementor (alert-port precedent — no seedable test adapter until a consumer
+  needs one), so it needs nothing from `AppState` today.

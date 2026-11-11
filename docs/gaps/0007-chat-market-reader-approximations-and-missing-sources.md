@@ -1,4 +1,4 @@
-# 0007 — Chat market-reader adapter has approximated fields and missing data sources
+# 0007 — Chat market/content-reader adapters have approximated fields and missing data sources
 
 **Status**: open
 
@@ -30,6 +30,14 @@ and are either approximated or answered with an explicit error rather than fabri
    anywhere yet — the upstream ingestion decision lives in
    `vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`. The tool reports the gap
    explicitly instead of the model fabricating deals.
+7. **`ContentReader::news_search` and `ContentReader::filings_search` always answer
+   `PortError::unavailable`.** Added with chat tools `news_search`/`filings_search`
+   (`vyapaar-agent` plan 0006 Phase 3) via the new
+   `crates/vyapaar-runtime-api-rest/src/chat_content.rs::FeedContentReader`: news has no data
+   source anywhere yet (`vyapaar-data/docs/gaps/0006-news-ingestion.md`), and filings are ingested
+   in `vyapaar-data`'s Python service (closed gap 0003) but nothing bridges that lakehouse into
+   Rust consumers yet (`vyapaar-data/docs/gaps/0007-filings-rust-bridge.md`). Both report the gap
+   explicitly instead of the model fabricating headlines or filings.
 
 ## Why
 
@@ -54,3 +62,5 @@ scope for a read-through wiring pass.
   `FeedSnapshotSource::snapshot`.
 - Item 6: close `vyapaar-data` gap 0005 (disclosure ingestion), then replace
   `FeedMarketReader::block_deals`'s stub with a real read (plan 0004 Phase 4).
+- Item 7: close `vyapaar-data` gaps 0006 (news ingestion) and 0007 (filings → Rust bridge),
+  then replace `FeedContentReader`'s stubs with real reads through the bridge.
