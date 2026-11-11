@@ -11,7 +11,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 |---|-------|--------------|--------|
 | [0004](0004-profile-schema-missing-watchlists-portfolios-risk-profiles-workspaces.md) | Profile schema has no room for watchlists metadata, portfolios, risk profiles, or workspaces | `vyapaar-runtime-api::profile`, `vyapaar-runtime-api-rest::profile_store` | Open |
 | [0006](0006-chat-agent-session-persistence-and-portfolio-tools.md) | Chat agent session persistence and portfolio-backed tools are stubbed (in-memory session store, `PortError::unavailable` portfolio reader) | `vyapaar-runtime-api-rest::chat`, `vyapaar-runtime-api-rest::state` | Open |
-| [0007](0007-chat-market-reader-approximations-and-missing-sources.md) | Chat market-reader adapter approximates last price as bid/ask mid, reports quote volume as unavailable, and has no indicator/macro-data/instrument-name sources | `vyapaar-runtime-api-rest::chat_market` | Open |
+| [0007](0007-chat-market-reader-approximations-and-missing-sources.md) | Chat market/content-reader adapters approximate last price as bid/ask mid, report quote volume as unavailable, and have no indicator/macro-data/instrument-name/news/filings sources | `vyapaar-runtime-api-rest::chat_market`, `vyapaar-runtime-api-rest::chat_content` | Open |
 
 ## Closed Gaps
 
