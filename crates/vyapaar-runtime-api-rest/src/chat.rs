@@ -12,7 +12,9 @@
 //! - Sessions are in-memory only (`InMemorySessionStore`); a server restart loses them.
 //! - Portfolio-backed tools are stubbed via [`StubPortfolioReader`]: `AppState` holds no
 //!   ledger-repository handle to build `LedgerPortfolioReader::from_combined` from, so every
-//!   portfolio-backed tool call answers empty rather than a real position or P&L.
+//!   portfolio-backed tool call returns `PortError::unavailable` rather than a real position or
+//!   P&L (deliberately an explicit error, not an empty success, so the model can't mistake "not
+//!   wired up" for "this account has zero positions").
 //! - `RuntimeMarketReader`/`RuntimeSnapshotSource` are constructed empty; nothing calls their
 //!   setters, so market/screener tool calls also answer empty until that is wired up.
 

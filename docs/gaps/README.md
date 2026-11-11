@@ -10,7 +10,6 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
 | [0004](0004-profile-schema-missing-watchlists-portfolios-risk-profiles-workspaces.md) | Profile schema has no room for watchlists metadata, portfolios, risk profiles, or workspaces | `vyapaar-runtime-api::profile`, `vyapaar-runtime-api-rest::profile_store` | Open |
-| [0005](0005-rest-api-openapi-spec-completeness-and-export.md) | REST API OpenAPI 3.1 specification completeness, schema coverage, and artifact export | `vyapaar-runtime-api-rest::openapi`, `vyapaar-runtime-api-rest::v1` | Open |
 | [0006](0006-chat-agent-session-persistence-and-portfolio-tools.md) | Chat agent session persistence and portfolio-backed tools are stubbed (in-memory session store, `PortError::unavailable` portfolio reader, empty market/screener readers) | `vyapaar-runtime-api-rest::chat`, `vyapaar-runtime-api-rest::state` | Open |
 
 ## Closed Gaps
