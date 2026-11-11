@@ -25,6 +25,11 @@ and are either approximated or answered with an explicit error rather than fabri
 5. **`SnapshotData::regime` and `SnapshotData::risk_metrics` are always `None`/empty.**
    `FeedSnapshotSource` only populates `universe` (from `InstrumentMaster::list_instruments`); no
    market-regime classifier or curated risk-metrics feed exists yet to back the other two fields.
+6. **`MarketReader::block_deals` always answers `PortError::unavailable`.** Added with chat tool
+   `block_deals` (plan 0004 Phases 1–3): no block/bulk deal disclosure data source is ingested
+   anywhere yet — the upstream ingestion decision lives in
+   `vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md`. The tool reports the gap
+   explicitly instead of the model fabricating deals.
 
 ## Why
 
@@ -47,3 +52,5 @@ scope for a read-through wiring pass.
 - Item 5: decide which risk metrics (OTR counters, halt status, kill-switch state) the chat agent
   should see, and either build or find a market-regime classifier; wire both into
   `FeedSnapshotSource::snapshot`.
+- Item 6: close `vyapaar-data` gap 0005 (disclosure ingestion), then replace
+  `FeedMarketReader::block_deals`'s stub with a real read (plan 0004 Phase 4).

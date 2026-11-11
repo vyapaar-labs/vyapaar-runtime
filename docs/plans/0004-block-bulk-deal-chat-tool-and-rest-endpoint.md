@@ -1,6 +1,8 @@
 # 0004 — Block/bulk deal chat tool and REST endpoint
 
-**Status**: Proposed
+**Status**: In progress — Phases 1–3 implemented (2026-11-11; `block_deals` chat tool live with
+honest `unavailable` stub, see gap 0007 item 6). Phase 4 blocked on `vyapaar-data` gap 0005.
+Phase 5 optional, not started.
 
 ---
 

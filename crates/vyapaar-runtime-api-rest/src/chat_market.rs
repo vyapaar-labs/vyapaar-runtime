@@ -10,12 +10,12 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use vyapaar_agent_chat_tools::ports::error::PortError;
 use vyapaar_agent_chat_tools::ports::market::{
-    InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory, MarketIndicators, MarketQuote,
-    MarketReader,
+    BlockDeal, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory, MarketIndicators,
+    MarketQuote, MarketReader,
 };
 use vyapaar_agent_chat_tools::ports::portfolio::DateRange;
 use vyapaar_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
@@ -173,6 +173,21 @@ impl MarketReader for FeedMarketReader {
         // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md.
         Err(PortError::unavailable(
             "macro data source not wired up; see docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md",
+        ))
+    }
+
+    async fn block_deals(
+        &self,
+        _instrument: Option<&InstrumentId>,
+        _date: Option<DateTime<Utc>>,
+    ) -> Result<Vec<BlockDeal>, PortError> {
+        // No block/bulk deal disclosure data source is ingested anywhere yet — see
+        // vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md. An explicit
+        // error, not an empty success, so the model can't mistake "not wired up" for "no
+        // deals happened today" (same pattern as `indicators`/`macro_series` above, per
+        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
+        Err(PortError::unavailable(
+            "block/bulk deal disclosures are not yet ingested; see vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md",
         ))
     }
 

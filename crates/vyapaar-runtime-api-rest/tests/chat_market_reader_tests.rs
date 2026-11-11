@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{TimeZone, Utc};
 use rust_decimal::Decimal;
+use vyapaar_agent_chat_tools::ports::error::PortErrorKind;
 use vyapaar_agent_chat_tools::ports::market::MarketReader;
 use vyapaar_agent_chat_tools::ports::portfolio::DateRange;
 use vyapaar_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
@@ -193,6 +194,21 @@ async fn indicators_and_macro_series_are_explicitly_unavailable() {
     let reader = reader_over(FakeFeed::default(), RiskEngine::default());
     assert!(reader.indicators(&reliance(), &[]).await.is_err());
     assert!(reader.macro_series("nifty_pe").await.is_err());
+}
+
+#[tokio::test]
+async fn block_deals_are_explicitly_unavailable() {
+    let reader = reader_over(FakeFeed::default(), RiskEngine::default());
+    let err = reader
+        .block_deals(Some(&reliance()), None)
+        .await
+        .unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+    assert!(
+        err.message
+            .contains("0005-block-bulk-deal-disclosure-ingestion.md"),
+        "stub must cite the upstream gap, got: {err}"
+    );
 }
 
 #[tokio::test]

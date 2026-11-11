@@ -14,6 +14,7 @@ use vyapaar_runtime_api::{
     VerifyStrategyResponse,
 };
 
+use crate::chat::chat_ws_handler;
 use crate::market::{self, ApiQuery};
 use crate::reports::{
     get_concentration_risk, get_equity_curve, get_fees_report, get_ledger, get_order_fills,
@@ -24,7 +25,6 @@ use crate::trade_journal::{
     get_trade_journal_notes, get_trade_journal_overview, get_trade_journal_trades,
     patch_trade_journal_trade, post_trade_journal_account, post_trade_journal_note,
 };
-use crate::chat::chat_ws_handler;
 use crate::ws::ws_handler;
 use crate::{
     ApiJson, AppState, capability_manifest, ingest, openapi, orders, portfolio, profile, runs,

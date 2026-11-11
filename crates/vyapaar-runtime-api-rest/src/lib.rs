@@ -32,6 +32,7 @@ pub mod bootstrap;
 mod caller;
 mod catalog;
 pub mod chat;
+pub mod chat_alerts;
 pub mod chat_market;
 mod dispatch;
 mod exec;

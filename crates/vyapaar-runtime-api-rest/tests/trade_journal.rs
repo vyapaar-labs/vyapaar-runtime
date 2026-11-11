@@ -1,8 +1,8 @@
 //! `/trade-journal/*` route tests.
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use axum::Router;
 use chrono::NaiveDate;
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -72,7 +72,9 @@ async fn call(router: &Router, method: &str, uri: &str, body: Option<&str>) -> (
     };
     let res = router.clone().oneshot(request).await.unwrap();
     let status = res.status();
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     (
         status,
         serde_json::from_slice(&bytes).unwrap_or(Value::Null),
@@ -209,8 +211,13 @@ async fn overview() {
 #[tokio::test]
 async fn calendar() {
     let router = build_router();
-    let (status, body) = call(&router, "GET", "/api/v1/trade-journal/calendar?month=2026-03", None)
-        .await;
+    let (status, body) = call(
+        &router,
+        "GET",
+        "/api/v1/trade-journal/calendar?month=2026-03",
+        None,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     let cal = &body["data"]["calendar"];
     assert_eq!(cal["year"], 2026);
@@ -296,7 +303,10 @@ async fn routes_are_not_flagged_not_implemented() {
         "POST /trade-journal/notes",
         "GET /trade-journal/compare",
     ] {
-        assert!(!flagged.contains(&route.to_string()), "{route} is flagged not-implemented");
+        assert!(
+            !flagged.contains(&route.to_string()),
+            "{route} is flagged not-implemented"
+        );
     }
 }
 
@@ -305,14 +315,16 @@ fn store_test_helpers() {
     // Exercise the store helpers used by the handlers directly.
     let mut store = JournalStore::new();
     assert_eq!(store.closed_trade_count(), 0);
-    assert!(store
-        .create_account(
-            JournalAccountId::new("a"),
-            "A",
-            AccountProvenance::Manual,
-            vyapaar_core::Currency::Inr,
-        )
-        .is_ok());
+    assert!(
+        store
+            .create_account(
+                JournalAccountId::new("a"),
+                "A",
+                AccountProvenance::Manual,
+                vyapaar_core::Currency::Inr,
+            )
+            .is_ok()
+    );
     assert_eq!(
         store
             .create_account(
@@ -324,9 +336,11 @@ fn store_test_helpers() {
             .unwrap_err(),
         StoreError::AccountAlreadyExists(JournalAccountId::new("a"))
     );
-    assert!(store
-        .set_note(&JournalAccountId::new("ghost"), now(), "x")
-        .is_err());
+    assert!(
+        store
+            .set_note(&JournalAccountId::new("ghost"), now(), "x")
+            .is_err()
+    );
     assert_eq!(store.account_count(), 1);
 }
 

@@ -10,7 +10,7 @@ Per workspace rule `.agents/rules/gap-tracking.md`:
 | # | Title | Target Scope | Status |
 |---|-------|--------------|--------|
 | [0003](0003-trade-journal-and-market-reference-rest-endpoints.md) | REST endpoints for trade-journal analytics and market reference data (symbol profile, economic calendar) | `vyapaar-runtime-api-rest` | Proposed |
-| [0004](0004-block-bulk-deal-chat-tool-and-rest-endpoint.md) | Block/bulk deal chat tool and REST endpoint | `vyapaar-runtime-api-rest`, `vyapaar-agent-chat-tools` | Proposed — Phases 1–3 unblocked, Phase 4 blocked on `vyapaar-data` gap 0005 |
+| [0004](0004-block-bulk-deal-chat-tool-and-rest-endpoint.md) | Block/bulk deal chat tool and REST endpoint | `vyapaar-runtime-api-rest`, `vyapaar-agent-chat-tools` | In progress — Phases 1–3 implemented (honest `unavailable` stub); Phase 4 blocked on `vyapaar-data` gap 0005 |
 
 ## Implemented Plans
 

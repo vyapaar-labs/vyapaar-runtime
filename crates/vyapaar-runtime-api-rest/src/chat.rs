@@ -22,6 +22,8 @@
 //! Market/screener tools read through live data via [`crate::chat_market::FeedMarketReader`]/
 //! [`crate::chat_market::FeedSnapshotSource`]; a few of their fields still approximate or report
 //! unavailable (see `docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md`).
+//! The price-alert tools write the caller's `Profile.alerts` document through the profiles
+//! store ([`crate::chat_alerts::ProfileAlertStore`], agent plan 0006 Phase 2).
 
 use std::sync::{Arc, Mutex};
 
@@ -33,6 +35,7 @@ use serde::Deserialize;
 use tracing::{debug, warn};
 
 use vyapaar_agent_chat::{ChatAgent, InMemorySessionStore, SessionSelector, ToolRegistry};
+use vyapaar_agent_chat_tools::ports::alert::{AlertReader, AlertWriter};
 use vyapaar_agent_chat_tools::ports::error::PortError;
 use vyapaar_agent_chat_tools::ports::portfolio::{AccountSummary, DateRange, OrderFilter};
 use vyapaar_agent_chat_tools::ports::{market::MarketReader, portfolio::PortfolioReader};
@@ -134,11 +137,15 @@ impl ChatRuntime {
     /// `/market-data/*` from — this is how `FeedMarketReader`/`FeedSnapshotSource` answer the
     /// chat tool catalog's market/screener tools with real data (closes the market/screener
     /// stand-in of docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md).
+    /// `profiles` is the same store `/profile` routes serve: the price-alert tools read and
+    /// write the caller's `Profile.alerts` document through it (see
+    /// [`crate::chat_alerts::ProfileAlertStore`]).
     pub fn from_env(
         instruments: Arc<dyn InstrumentMaster>,
         bars: Arc<dyn BarReader>,
         quotes: Arc<dyn QuoteReader>,
         risk_engine: Arc<Mutex<RiskEngine>>,
+        profiles: Arc<crate::profile_store::ProfileStore>,
     ) -> anyhow::Result<Option<Self>> {
         if !llm_configured() {
             return Ok(None);
@@ -162,6 +169,18 @@ impl ChatRuntime {
             portfolio,
             market,
             Some(snapshots),
+        );
+
+        // Price alerts write the user's profile document (`ToolRisk::LocalWrite`; agent plan
+        // 0006 Phase 2) — the same `Profile.alerts` value vyapaar-ui-web's alerts-store.ts
+        // syncs via the /profile routes (docs/gaps/0004's profile-schema precedent).
+        let alerts = Arc::new(crate::chat_alerts::ProfileAlertStore::new(profiles));
+        let alert_reader: Arc<dyn AlertReader> = alerts.clone();
+        let alert_writer: Arc<dyn AlertWriter> = alerts.clone();
+        vyapaar_agent_chat_tools::catalog::register_alert_tools(
+            &mut registry,
+            alert_reader,
+            alert_writer,
         );
 
         // stand-in for docs/gaps/0006-chat-agent-session-persistence-and-portfolio-tools.md:

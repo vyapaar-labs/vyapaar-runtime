@@ -19,7 +19,9 @@ async fn call(method: &str, uri: &str) -> (StatusCode, Value) {
         .await
         .unwrap();
     let status = res.status();
-    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
     (
         status,
         serde_json::from_slice(&bytes).unwrap_or(Value::Null),
@@ -51,14 +53,16 @@ async fn calendar() {
     let events = &body["data"]["events"];
     assert_eq!(events.as_array().unwrap().len(), 2);
     assert_eq!(events[0]["category"], "Earnings");
-    assert_eq!(events[0]["event_name"], "Reliance Industries Q3 FY27 Earnings");
+    assert_eq!(
+        events[0]["event_name"],
+        "Reliance Industries Q3 FY27 Earnings"
+    );
     assert_eq!(events[0]["impact_level"], "High");
 }
 
 #[tokio::test]
 async fn calendar_category_filter() {
-    let (status, body) =
-        call("GET", "/api/v1/market-data/calendar?category=Economic").await;
+    let (status, body) = call("GET", "/api/v1/market-data/calendar?category=Economic").await;
     assert_eq!(status, StatusCode::OK);
     let events = &body["data"]["events"];
     assert_eq!(events.as_array().unwrap().len(), 1);
@@ -78,6 +82,9 @@ async fn routes_are_not_flagged_not_implemented() {
         "GET /market-data/symbol-profile/:id",
         "GET /market-data/calendar",
     ] {
-        assert!(!flagged.contains(&route.to_string()), "{route} is flagged not-implemented");
+        assert!(
+            !flagged.contains(&route.to_string()),
+            "{route} is flagged not-implemented"
+        );
     }
 }
