@@ -14,8 +14,8 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use vyapaar_agent_chat_tools::ports::error::PortError;
 use vyapaar_agent_chat_tools::ports::market::{
-    BlockDeal, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory, MarketIndicators,
-    MarketQuote, MarketReader,
+    BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory,
+    MarketIndicators, MarketQuote, MarketReader, OptionsChain,
 };
 use vyapaar_agent_chat_tools::ports::portfolio::DateRange;
 use vyapaar_agent_chat_tools::ports::snapshot::{SnapshotData, SnapshotNeeds, SnapshotSource};
@@ -201,6 +201,40 @@ impl MarketReader for FeedMarketReader {
             .get(instrument)
             .copied()
             .ok_or_else(|| PortError::not_found(format!("Price band not found for {instrument}")))
+    }
+
+    async fn options_chain(
+        &self,
+        _underlying: &InstrumentId,
+        _expiry: Option<DateTime<Utc>>,
+        _limit: Option<usize>,
+    ) -> Result<OptionsChain, PortError> {
+        // Contract-reference columns and Greeks pricing exist in `vyapaar-market`, but no
+        // chain enumeration/reader is served anywhere yet — see
+        // vyapaar-market/docs/gaps/0001-options-chain-reader.md. An explicit error, not an
+        // empty success, so the model can't mistake "not wired up" for "this underlying has
+        // no listed options" (same pattern as `indicators`/`macro_series` above, per
+        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
+        Err(PortError::unavailable(
+            "options-chain data is not served yet; see vyapaar-market/docs/gaps/0001-options-chain-reader.md",
+        ))
+    }
+
+    async fn corporate_actions(
+        &self,
+        _instrument: Option<&InstrumentId>,
+        _action_type: Option<&str>,
+        _limit: Option<usize>,
+    ) -> Result<Vec<CorporateAction>, PortError> {
+        // The historical corporate-actions reader exists Python-side (`vyapaar_data`'s
+        // `CorporateActionsRepository`/`DuckDbCorporateActionsStore`) but nothing bridges
+        // that lakehouse into Rust consumers yet — see
+        // vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md. An explicit error,
+        // not an empty success (same pattern as `indicators`/`macro_series` above, per
+        // docs/gaps/0007-chat-market-reader-approximations-and-missing-sources.md).
+        Err(PortError::unavailable(
+            "corporate-actions data is not served yet; see vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md",
+        ))
     }
 }
 

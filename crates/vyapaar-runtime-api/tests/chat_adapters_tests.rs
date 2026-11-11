@@ -5,7 +5,8 @@ use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
 use vyapaar_agent_chat_tools::ports::error::PortErrorKind;
 use vyapaar_agent_chat_tools::ports::market::{
-    BlockDeal, InstrumentSearchResult, MacroSeries, MarketBar, MarketQuote, MarketReader,
+    BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketQuote,
+    MarketReader, OptionContract, OptionsChain,
 };
 use vyapaar_agent_chat_tools::ports::portfolio::{DateRange, OrderFilter, PortfolioReader};
 use vyapaar_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
@@ -295,6 +296,109 @@ async fn test_runtime_market_reader() {
         .unwrap();
     assert_eq!(tcs_day_different_hour.len(), 1);
     assert_eq!(tcs_day_different_hour[0], deal_tcs);
+
+    // 8. Options chain — explicitly unavailable until seeded, then filtered by
+    //    expiry (calendar-day) and capped by limit.
+    let chain_err = reader.options_chain(&inst, None, None).await.unwrap_err();
+    assert_eq!(chain_err.kind, PortErrorKind::Unavailable);
+
+    let expiry = now + Duration::days(14);
+    let chain = OptionsChain {
+        underlying: inst.clone(),
+        as_of: now,
+        contracts: vec![
+            OptionContract {
+                instrument: InstrumentId::new(Exchange::Nfo, "INFY26NOV1850CE"),
+                option_type: "CE".to_string(),
+                strike: Price::new(dec!(1850.0)),
+                expiry,
+                lot_size: Quantity::new(dec!(400)),
+                last_price: Some(Price::new(dec!(42.5))),
+                bid: Some(Price::new(dec!(42.0))),
+                ask: Some(Price::new(dec!(43.0))),
+                open_interest: Some(Quantity::new(dec!(320000))),
+            },
+            OptionContract {
+                instrument: InstrumentId::new(Exchange::Nfo, "INFY26NOV1900CE"),
+                option_type: "CE".to_string(),
+                strike: Price::new(dec!(1900.0)),
+                expiry,
+                lot_size: Quantity::new(dec!(400)),
+                last_price: Some(Price::new(dec!(18.0))),
+                bid: None,
+                ask: None,
+                open_interest: None,
+            },
+        ],
+    };
+    reader.set_options_chain(chain);
+
+    let fetched_chain = reader.options_chain(&inst, None, None).await.unwrap();
+    assert_eq!(fetched_chain.contracts.len(), 2);
+
+    let capped_chain = reader.options_chain(&inst, None, Some(1)).await.unwrap();
+    assert_eq!(capped_chain.contracts.len(), 1);
+
+    // Same calendar-day expiry, different time-of-day: callers pass a trading-day
+    // timestamp, the filter must match on date (same rule as block deals above).
+    let filtered_chain = reader
+        .options_chain(&inst, Some(expiry + Duration::hours(3)), None)
+        .await
+        .unwrap();
+    assert_eq!(filtered_chain.contracts.len(), 2);
+
+    let missing_chain = reader
+        .options_chain(&InstrumentId::new(Exchange::Nse, "TCS"), None, None)
+        .await
+        .unwrap_err();
+    assert_eq!(missing_chain.kind, PortErrorKind::NotFound);
+
+    // 9. Corporate actions — explicitly unavailable until seeded, then filtered by
+    //    instrument/action type and capped by limit.
+    let actions_err = reader
+        .corporate_actions(None, None, None)
+        .await
+        .unwrap_err();
+    assert_eq!(actions_err.kind, PortErrorKind::Unavailable);
+
+    let dividend = CorporateAction {
+        instrument: inst.clone(),
+        action_type: "dividend".to_string(),
+        ex_date: now + Duration::days(7),
+        record_date: Some(now + Duration::days(8)),
+        amount: Some(Money::new(dec!(21.50), Currency::Inr)),
+        ratio_from: None,
+        ratio_to: None,
+    };
+    let split = CorporateAction {
+        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
+        action_type: "split".to_string(),
+        ex_date: now + Duration::days(30),
+        record_date: None,
+        amount: None,
+        ratio_from: Some(Quantity::new(dec!(1))),
+        ratio_to: Some(Quantity::new(dec!(2))),
+    };
+    reader.set_corporate_actions(vec![dividend.clone(), split.clone()]);
+
+    let all_actions = reader.corporate_actions(None, None, None).await.unwrap();
+    assert_eq!(all_actions.len(), 2);
+
+    let dividends = reader
+        .corporate_actions(Some(&inst), Some("dividend"), None)
+        .await
+        .unwrap();
+    assert_eq!(dividends.len(), 1);
+    assert_eq!(dividends[0], dividend);
+
+    let bonus_only = reader
+        .corporate_actions(None, Some("bonus"), None)
+        .await
+        .unwrap();
+    assert!(bonus_only.is_empty());
+
+    let capped_actions = reader.corporate_actions(None, None, Some(1)).await.unwrap();
+    assert_eq!(capped_actions.len(), 1);
 }
 
 #[tokio::test]

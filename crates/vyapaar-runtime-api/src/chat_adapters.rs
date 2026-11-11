@@ -13,8 +13,8 @@ use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use vyapaar_agent_chat_tools::ports::error::PortError;
 use vyapaar_agent_chat_tools::ports::market::{
-    BlockDeal, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory, MarketIndicators,
-    MarketQuote, MarketReader,
+    BlockDeal, CorporateAction, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory,
+    MarketIndicators, MarketQuote, MarketReader, OptionsChain,
 };
 use vyapaar_agent_chat_tools::ports::portfolio::{
     AccountSummary, DateRange, OrderFilter, PortfolioReader,
@@ -201,6 +201,8 @@ pub struct RuntimeMarketReader {
     macro_data: RwLock<HashMap<String, MacroSeries>>,
     price_bands: RwLock<HashMap<InstrumentId, PriceBand>>,
     block_deals: RwLock<Vec<BlockDeal>>,
+    options_chains: RwLock<HashMap<InstrumentId, OptionsChain>>,
+    corporate_actions: RwLock<Vec<CorporateAction>>,
 }
 
 impl RuntimeMarketReader {
@@ -242,6 +244,19 @@ impl RuntimeMarketReader {
     /// Set or replace the disclosed block/bulk deal list.
     pub fn set_block_deals(&self, deals: Vec<BlockDeal>) {
         *self.block_deals.write().unwrap() = deals;
+    }
+
+    /// Set or replace the options chain snapshot for an underlying.
+    pub fn set_options_chain(&self, chain: OptionsChain) {
+        self.options_chains
+            .write()
+            .unwrap()
+            .insert(chain.underlying.clone(), chain);
+    }
+
+    /// Set or replace the corporate-actions list.
+    pub fn set_corporate_actions(&self, actions: Vec<CorporateAction>) {
+        *self.corporate_actions.write().unwrap() = actions;
     }
 
     /// Set or update price bands for an instrument.
@@ -383,6 +398,76 @@ impl MarketReader for RuntimeMarketReader {
         map.get(instrument)
             .copied()
             .ok_or_else(|| PortError::not_found(format!("Price band not found for {instrument}")))
+    }
+
+    async fn options_chain(
+        &self,
+        underlying: &InstrumentId,
+        expiry: Option<DateTime<Utc>>,
+        limit: Option<usize>,
+    ) -> Result<OptionsChain, PortError> {
+        let map = self.options_chains.read().unwrap();
+        if map.is_empty() {
+            // Nothing seeded and no real chain reader is served anywhere yet — see
+            // vyapaar-market/docs/gaps/0001-options-chain-reader.md. An explicit error,
+            // not an empty success, so callers can't mistake "not wired up" for "this
+            // underlying has no listed options."
+            return Err(PortError::unavailable(
+                "options-chain data is not served yet; see vyapaar-market/docs/gaps/0001-options-chain-reader.md",
+            ));
+        }
+        let mut chain = map.get(underlying).cloned().ok_or_else(|| {
+            PortError::not_found(format!("Options chain not found for {underlying}"))
+        })?;
+        if let Some(exp) = expiry {
+            // Calendar-day match, not exact-instant equality: callers pass an expiry
+            // trading day, contracts carry their own expiry instant (same rule as
+            // `block_deals`' trade-date filter above).
+            chain
+                .contracts
+                .retain(|c| c.expiry.date_naive() == exp.date_naive());
+        }
+        const MAX_CHAIN_CAP: usize = 500;
+        let effective_limit = limit.map(|l| l.min(MAX_CHAIN_CAP)).unwrap_or(MAX_CHAIN_CAP);
+        chain.contracts.truncate(effective_limit);
+        Ok(chain)
+    }
+
+    async fn corporate_actions(
+        &self,
+        instrument: Option<&InstrumentId>,
+        action_type: Option<&str>,
+        limit: Option<usize>,
+    ) -> Result<Vec<CorporateAction>, PortError> {
+        let actions = self.corporate_actions.read().unwrap();
+        if actions.is_empty() {
+            // Nothing seeded and the historical corporate-actions reader is Python-side
+            // only (no Rust consumer bridge) — see
+            // vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md. An explicit
+            // error, not an empty success, so callers can't mistake "not wired up" for
+            // "this instrument has no corporate actions."
+            return Err(PortError::unavailable(
+                "corporate-actions data is not served yet; see vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md",
+            ));
+        }
+        let mut hits: Vec<CorporateAction> = actions
+            .iter()
+            .filter(|a| match instrument {
+                Some(i) => a.instrument == *i,
+                None => true,
+            })
+            .filter(|a| match action_type {
+                Some(t) => a.action_type == t,
+                None => true,
+            })
+            .cloned()
+            .collect();
+        const MAX_ACTIONS_CAP: usize = 50;
+        let effective_limit = limit
+            .map(|l| l.min(MAX_ACTIONS_CAP))
+            .unwrap_or(MAX_ACTIONS_CAP);
+        hits.truncate(effective_limit);
+        Ok(hits)
     }
 }
 

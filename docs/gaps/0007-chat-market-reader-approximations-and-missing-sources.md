@@ -38,6 +38,20 @@ and are either approximated or answered with an explicit error rather than fabri
    in `vyapaar-data`'s Python service (closed gap 0003) but nothing bridges that lakehouse into
    Rust consumers yet (`vyapaar-data/docs/gaps/0007-filings-rust-bridge.md`). Both report the gap
    explicitly instead of the model fabricating headlines or filings.
+8. **`MarketReader::options_chain` always answers `PortError::unavailable`.** Added with chat
+   tool `options_chain` (`vyapaar-agent` plan 0006 Phase 4): `vyapaar-market` holds
+   contract-reference columns and Greeks pricing but serves no chain enumeration/reader yet
+   (`vyapaar-market/docs/gaps/0001-options-chain-reader.md`, that repo's first filed gap). The
+   seedable `RuntimeMarketReader` (runtime-api) accepts a `set_options_chain` store for tests,
+   but `FeedMarketReader` has nothing real to read.
+9. **`MarketReader::corporate_actions` always answers `PortError::unavailable`** in
+   `FeedMarketReader`. Added with chat tool `corporate_actions` (`vyapaar-agent` plan 0006
+   Phase 4): the historical corporate-actions reader exists Python-side (`vyapaar_data`'s
+   `CorporateActionsRepository`/`DuckDbCorporateActionsStore`) but has no Rust-consumer bridge
+   (`vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md`), and its real-world
+   population additionally waits on
+   `vyapaar-data/docs/gaps/0009-corporate-actions-ingestion.md`. The seedable
+   `RuntimeMarketReader` accepts a `set_corporate_actions` store for tests.
 
 ## Why
 
@@ -64,3 +78,8 @@ scope for a read-through wiring pass.
   `FeedMarketReader::block_deals`'s stub with a real read (plan 0004 Phase 4).
 - Item 7: close `vyapaar-data` gaps 0006 (news ingestion) and 0007 (filings → Rust bridge),
   then replace `FeedContentReader`'s stubs with real reads through the bridge.
+- Item 8: close `vyapaar-market/docs/gaps/0001` (chain enumeration/reader), then replace
+  `FeedMarketReader::options_chain`'s stub with a real read.
+- Item 9: close `vyapaar-data` gaps 0008 (corporate-actions → Rust bridge) and 0009
+  (historical ingestion), then replace `FeedMarketReader::corporate_actions`'s stub with a
+  real read through the bridge.

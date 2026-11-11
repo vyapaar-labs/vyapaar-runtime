@@ -12,6 +12,19 @@
 
 ## Phase / Slice Status
 
+- **Agent plan 0006 Phase 4 (options-chain / corporate-actions chat tools) — wiring implemented
+  2026-11-12**: research-verified first per plan 0006 §4 (at most 1 subagent) — the plan's
+  corporate-actions assumption was **stale**: a historical reader *does* exist Python-side
+  (`vyapaar_data`'s `CorporateActionsRepository`/`DuckDbCorporateActionsStore`), while
+  `vyapaar-market` has contract-reference/Greeks building blocks but no chain reader. Gaps
+  filed before any tool code: `vyapaar-market/docs/gaps/0001-options-chain-reader.md` (that
+  repo's first), `vyapaar-data/docs/gaps/0008-corporate-actions-rust-bridge.md` +
+  `0009-corporate-actions-ingestion.md`. Landed here: `FeedMarketReader::options_chain` +
+  `::corporate_actions`, both honest `PortError::unavailable` stubs citing those gaps;
+  seedable `RuntimeMarketReader` gained `set_options_chain` (keyed by underlying) +
+  `set_corporate_actions` (empty ⇒ unavailable, same shape as block deals) with
+  `chat_adapters_tests.rs` coverage; tracked as items 8–9 of `docs/gaps/0007-*.md`. Catalogue
+  count 17 → 19 upstream.
 - **Agent plan 0006 Phase 3 (news/filings chat tools) — wiring implemented 2026-11-12**: new
   `crates/vyapaar-runtime-api-rest/src/chat_content.rs::FeedContentReader` implements
   `vyapaar-agent-chat-tools`'s new `ContentReader` port with honest `PortError::unavailable`
@@ -55,12 +68,13 @@
 
 ## Immediate Next Step
 
-Agent plan 0006 Phase 3 is done (content tools wired; upstream verdict recorded — filings
-Python-only, news nothing). Phase 4 stays blocked on its own gaps (options-chain in
-`vyapaar-market`, corporate-actions in `vyapaar-data` — research-verify, then file, per agent
-plan 0006 §4). Plan 0004 Phase 4 (real block/bulk deal data) remains blocked on `vyapaar-data`
-gap 0005. When chat sessions gain bearer identity (`docs/gaps/0006`), switch
-`ProfileAlertStore::for_user` to the connection's `token_id`.
+Agent plan 0006 is fully implemented (Phases 1–4). Remaining chat-tool data blockers are all
+upstream gaps, tracked in `docs/gaps/0007-*.md`: `vyapaar-market/docs/gaps/0001` (options-chain
+reader) for `options_chain`; `vyapaar-data/docs/gaps/0008`+`0009` (Rust bridge + ingestion) for
+`corporate_actions`; `vyapaar-data/docs/gaps/0005` for plan 0004 Phase 4 (real block/bulk data);
+`vyapaar-data/docs/gaps/0006`+`0007` for the content tools. When chat sessions gain bearer
+identity (`docs/gaps/0006`), switch `ProfileAlertStore::for_user` to the connection's
+`token_id`.
 
 ## Do not regress
 
@@ -92,7 +106,10 @@ gap 0005. When chat sessions gain bearer identity (`docs/gaps/0006`), switch
   on the random-ID path.
 - `vyapaar_runtime_api::chat_adapters::RuntimeMarketReader` is a seedable test adapter: empty
   block-deals store ⇒ `PortError::unavailable` (gap 0005 citation); seeded ⇒ filter matches.
-  Same honest-stub shape as `FeedMarketReader` (gap 0007 item 6).
+  Same honest-stub shape as `FeedMarketReader` (gap 0007 item 6). Agent plan 0006 Phase 4 added
+  the same shape for `set_options_chain` (keyed by underlying, empty ⇒ unavailable citing
+  `vyapaar-market/docs/gaps/0001`) and `set_corporate_actions` (empty ⇒ unavailable citing
+  `vyapaar-data/docs/gaps/0008`); expiry filters match on calendar day, not exact instant.
 - `chat_content.rs::FeedContentReader` takes no ports and answers every call with an explicit
   `unavailable` (gap 0006 news / gap 0007 filings citations): `ContentReader` is a new port with
   exactly one implementor (alert-port precedent — no seedable test adapter until a consumer
