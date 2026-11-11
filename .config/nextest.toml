@@ -1,0 +1,5 @@
+# nextest runner config — per-test timeout so a hung test (e.g. a WebSocket test's
+# awaited stream, see .agents/HANDOFF.md "Do not regress") is killed individually
+# instead of blocking the whole workspace run.
+[profile.default]
+timeout = "180s"
