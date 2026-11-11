@@ -3,8 +3,9 @@ use std::sync::Arc;
 use chrono::{Duration, TimeZone, Utc};
 use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+use vyapaar_agent_chat_tools::ports::error::PortErrorKind;
 use vyapaar_agent_chat_tools::ports::market::{
-    InstrumentSearchResult, MacroSeries, MarketBar, MarketQuote, MarketReader,
+    BlockDeal, InstrumentSearchResult, MacroSeries, MarketBar, MarketQuote, MarketReader,
 };
 use vyapaar_agent_chat_tools::ports::portfolio::{DateRange, OrderFilter, PortfolioReader};
 use vyapaar_agent_chat_tools::ports::snapshot::{SnapshotNeeds, SnapshotSource};
@@ -244,6 +245,56 @@ async fn test_runtime_market_reader() {
     );
     let band = reader.price_band(&inst).await.unwrap();
     assert_eq!(band.upper.0, dec!(2035.0));
+
+    // 7. Block deals — explicitly unavailable until seeded, then filtered by instrument/date
+    let err = reader.block_deals(None, None).await.unwrap_err();
+    assert_eq!(err.kind, PortErrorKind::Unavailable);
+
+    let deal_rel = BlockDeal {
+        instrument: inst.clone(),
+        exchange: "NSE".to_string(),
+        client_name: "MORGAN STANLEY ASIA SINGAPORE PTE".to_string(),
+        side: "buy".to_string(),
+        category: "block".to_string(),
+        quantity: Quantity::new(dec!(500000)),
+        price: Price::new(dec!(1850.0)),
+        trade_date: now,
+    };
+    let deal_tcs = BlockDeal {
+        instrument: InstrumentId::new(Exchange::Nse, "TCS"),
+        exchange: "BSE".to_string(),
+        client_name: "GRIMALD EUROPE NC AV".to_string(),
+        side: "sell".to_string(),
+        category: "bulk".to_string(),
+        quantity: Quantity::new(dec!(25000)),
+        price: Price::new(dec!(3500.0)),
+        trade_date: now + Duration::days(1),
+    };
+    reader.set_block_deals(vec![deal_rel.clone(), deal_tcs.clone()]);
+
+    let all = reader.block_deals(None, None).await.unwrap();
+    assert_eq!(all.len(), 2);
+
+    let rel_only = reader.block_deals(Some(&inst), None).await.unwrap();
+    assert_eq!(rel_only.len(), 1);
+    assert_eq!(rel_only[0], deal_rel);
+
+    let tcs_day = reader
+        .block_deals(None, Some(now + Duration::days(1)))
+        .await
+        .unwrap();
+    assert_eq!(tcs_day.len(), 1);
+    assert_eq!(tcs_day[0], deal_tcs);
+
+    // Same calendar day, different time-of-day: a caller asking "deals on that date" passes
+    // a trading-day timestamp, not the exact intraday disclosure instant seeded above — the
+    // filter must match on date, not exact `DateTime` equality.
+    let tcs_day_different_hour = reader
+        .block_deals(None, Some(now + Duration::days(1) + Duration::hours(5)))
+        .await
+        .unwrap();
+    assert_eq!(tcs_day_different_hour.len(), 1);
+    assert_eq!(tcs_day_different_hour[0], deal_tcs);
 }
 
 #[tokio::test]

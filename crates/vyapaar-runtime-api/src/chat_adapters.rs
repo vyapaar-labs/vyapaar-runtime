@@ -9,12 +9,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use vyapaar_agent_chat_tools::ports::error::PortError;
 use vyapaar_agent_chat_tools::ports::market::{
-    InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory, MarketIndicators, MarketQuote,
-    MarketReader,
+    BlockDeal, InstrumentSearchResult, MacroSeries, MarketBar, MarketHistory, MarketIndicators,
+    MarketQuote, MarketReader,
 };
 use vyapaar_agent_chat_tools::ports::portfolio::{
     AccountSummary, DateRange, OrderFilter, PortfolioReader,
@@ -200,6 +200,7 @@ pub struct RuntimeMarketReader {
     search_index: RwLock<Vec<InstrumentSearchResult>>,
     macro_data: RwLock<HashMap<String, MacroSeries>>,
     price_bands: RwLock<HashMap<InstrumentId, PriceBand>>,
+    block_deals: RwLock<Vec<BlockDeal>>,
 }
 
 impl RuntimeMarketReader {
@@ -236,6 +237,11 @@ impl RuntimeMarketReader {
     pub fn set_macro_series(&self, series: MacroSeries) {
         let mut map = self.macro_data.write().unwrap();
         map.insert(series.series.clone(), series);
+    }
+
+    /// Set or replace the disclosed block/bulk deal list.
+    pub fn set_block_deals(&self, deals: Vec<BlockDeal>) {
+        *self.block_deals.write().unwrap() = deals;
     }
 
     /// Set or update price bands for an instrument.
@@ -338,6 +344,38 @@ impl MarketReader for RuntimeMarketReader {
         map.get(series)
             .cloned()
             .ok_or_else(|| PortError::not_found(format!("Macro series '{series}' not found")))
+    }
+
+    async fn block_deals(
+        &self,
+        instrument: Option<&InstrumentId>,
+        date: Option<DateTime<Utc>>,
+    ) -> Result<Vec<BlockDeal>, PortError> {
+        let deals = self.block_deals.read().unwrap();
+        if deals.is_empty() {
+            // Nothing seeded and no real disclosure feed exists anywhere yet — see
+            // vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md. An
+            // explicit error, not an empty success, so callers can't mistake "not wired
+            // up" for "no deals happened today."
+            return Err(PortError::unavailable(
+                "no block/bulk deal disclosures available; see vyapaar-data/docs/gaps/0005-block-bulk-deal-disclosure-ingestion.md",
+            ));
+        }
+        Ok(deals
+            .iter()
+            .filter(|d| match instrument {
+                Some(i) => d.instrument == *i,
+                None => true,
+            })
+            .filter(|d| match date {
+                // Calendar-day match, not exact-instant equality: callers pass a trading
+                // day, but disclosures carry a real intraday timestamp (exchange
+                // publish time), so `==` would only ever match a midnight-UTC seed.
+                Some(ts) => d.trade_date.date_naive() == ts.date_naive(),
+                None => true,
+            })
+            .cloned()
+            .collect())
     }
 
     async fn price_band(&self, instrument: &InstrumentId) -> Result<PriceBand, PortError> {
