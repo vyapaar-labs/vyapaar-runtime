@@ -12,6 +12,24 @@
 
 ## Phase / Slice Status
 
+- **Per-crate design docs — complete (2026-11-12, docs-only)**: `docs/design/`
+  now has a source-verified design doc for every non-stub crate —
+  `architecture.md` (rewritten, 14-crate map + gaps/plans snapshot) plus
+  `code-{strategy,backtest,enhancer,actors,jobs,persistence,api,api-rest,config,
+  testing,feed}.md`; the stale combined `code-config-testing-feed.md` was
+  replaced by the split `code-config.md` / `code-testing.md` / `code-feed.md`
+  (feed doc also covers the placeholder stubs `vyapaar-runtime-market`,
+  `vyapaar-indicators`, `vyapaar-runtime-test-utils`); `code-migration-map.md`
+  kept as historical. Key corrections baked in: audit via injected
+  `SqliteAuditLedger` (no `AuditPersistenceActor`), coalescing defaults
+  100/50 ms, `JobSpec` has no `Trigger` enum, guardrail gates are DSR ≥ 3.0 /
+  PBO < 0.5, 501 `valuation_engine_mismatch` on the four portfolio routes,
+  legacy `honba_*` metric prefix. **No Rust code touched** — no `make prod`
+  required by §11; the gate status below remains from the 2026-11-12 code pass.
+  Mirrored into `vyapaar-docs`: new `runtime_overview.md` + `runtime_chat.md`,
+  rewritten `event_loop.md` / `runtime_jobs.md`, corrected
+  `strategy_tester_and_enhancer.md` + `api/rest.md` + conformance matrix
+  (`mkdocs build --strict` PASS).
 - **Agent plan 0006 Phase 4 (options-chain / corporate-actions chat tools) — wiring implemented
   2026-11-12**: research-verified first per plan 0006 §4 (at most 1 subagent) — the plan's
   corporate-actions assumption was **stale**: a historical reader *does* exist Python-side
@@ -95,6 +113,11 @@ identity (`docs/gaps/0006`), switch `ProfileAlertStore::for_user` to the connect
 
 ## Decisions & Discoveries
 
+- **Docs source of truth**: `vyapaar-runtime/docs/design/code-*.md` are the
+  per-crate references; vyapaar-docs pages link to them rather than
+  duplicating facts (single writer per fact). Gap citations inside the design
+  docs name the owning repos' `docs/gaps/*` (`vyapaar-data` 0005–0008,
+  `vyapaar-market` 0001).
 - **Alert storage = `Profile.alerts`, no new store**: gap 0004 had already mapped ui-web's
   `AlertMeta[]` onto the opaque field with no server change; making the chat agent a second
   writer reuses that contract instead of duplicating a store. DTO round-trips ui-web exactly
