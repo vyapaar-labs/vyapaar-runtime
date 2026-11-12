@@ -1,8 +1,8 @@
 # `vyapaar-runtime` — Historical Migration Map (honba-ya → vyapaar-runtime)
 
 > **Tier**: Tier 3B (Depends on `vyapaar-core`, `vyapaar-risk`, `vyapaar-ledger`, `vyapaar-market`, `vyapaar-exec`)
-> **Source**: `/home/pmallapp/Devel/Finance/honba-workspace/honba-ya`
-> **Target**: `/home/pmallapp/Devel/Finance/vyapaar-labs/vyapaar-runtime`
+> **Source**: `honba-workspace/honba-ya`
+> **Target**: `vyapaar-runtime`
 > **Status**: Migration complete (all 10 sub-crates ported).
 
 ## Sub-Crate Mapping Table (Migrated in Listed Order)
@@ -44,7 +44,7 @@
 ## Verification Commands
 
 ```bash
-cd /home/pmallapp/Devel/Finance/vyapaar-labs/vyapaar-runtime
+# Run from the repository root
 grep -rn "#\[cfg(test)\]" crates/*/src/ && exit 1 || true
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
