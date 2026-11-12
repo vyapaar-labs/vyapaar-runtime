@@ -3,12 +3,13 @@
 use chrono::Utc;
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 use tracing::info;
 use uuid::Uuid;
-use vyapaar_core::{ClientOrderId, OrderAck};
-use vyapaar_exec_core::BrokerExecutor;
+use vyapaar_core::ClientOrderId;
+use vyapaar_exec_core::{BrokerError, BrokerExecutor, RateLimitedBroker, RiskGatedExecutor};
 use vyapaar_ledger_oms::{OrderEntry, OrderStateMachine, OrderStatus};
+use vyapaar_risk::RiskEngine;
 use vyapaar_runtime_persistence::SqliteAuditLedger;
 
 use crate::messages::{ActorStatus, ExecutionMsg, RiskMsg, StrategyMsg};
@@ -68,6 +69,28 @@ impl ExecutionActor {
     pub fn with_oms(mut self, oms: OrderStateMachine) -> Self {
         self.oms = Some(oms);
         self
+    }
+
+    /// Compose the injected broker with the canonical `vyapaar-exec` wrapping
+    /// stack: [`RiskGatedExecutor`] (mandatory pre-trade SEBI gate) over
+    /// [`RateLimitedBroker`] (per-broker token bucket).
+    ///
+    /// Every `ExecuteOrder` then flows `RiskGate → rate limiter → broker`:
+    /// orders refused by the risk engine never touch the broker network, and
+    /// every outbound call is metered against the broker's documented preset
+    /// (e.g. Kite 3 order-calls/s). Fill/cancel bookkeeping stays on the actor.
+    ///
+    /// Pre-trade gating also runs upstream in the `RiskActor`; this wrapper is
+    /// defense in depth at the wire boundary.
+    pub fn with_exec_stack(
+        mut self,
+        risk_engine: Arc<Mutex<RiskEngine>>,
+    ) -> Result<Self, BrokerError> {
+        let inner: Arc<dyn BrokerExecutor> = self.broker.clone();
+        let rate_limited = RateLimitedBroker::preset(inner)?;
+        let gated = RiskGatedExecutor::new(rate_limited, risk_engine);
+        self.broker = Arc::new(gated);
+        Ok(self)
     }
 
     /// Access broker adapter name.
@@ -212,9 +235,7 @@ impl ExecutionActor {
                 }
 
                 // Convert execution::BrokerError to messages::BrokerError for the reply channel
-                let res_converted: Result<OrderAck, crate::messages::BrokerError> =
-                    res.map_err(|e| crate::messages::BrokerError::InvalidRequest(e.to_string()));
-                let _ = reply_to.send(res_converted);
+                let _ = reply_to.send(res);
             }
 
             ExecutionMsg::CancelOrder {
@@ -263,16 +284,12 @@ impl ExecutionActor {
                     m.record_actor_error("execution", "broker_cancel_error");
                 }
 
-                let res_converted =
-                    res.map_err(|e| crate::messages::BrokerError::InvalidRequest(e.to_string()));
-                let _ = reply_to.send(res_converted);
+                let _ = reply_to.send(res);
             }
 
             ExecutionMsg::QueryStatus { order_id, reply_to } => {
                 let res = self.broker.get_order_status(&order_id).await;
-                let res_converted =
-                    res.map_err(|e| crate::messages::BrokerError::InvalidRequest(e.to_string()));
-                let _ = reply_to.send(res_converted);
+                let _ = reply_to.send(res);
             }
 
             ExecutionMsg::RiskBreachEvent(breach) => {

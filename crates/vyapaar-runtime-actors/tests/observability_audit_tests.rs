@@ -167,7 +167,7 @@ async fn test_actor_runtime_with_observability_and_audit() {
     let audit_ledger = Arc::new(SqliteAuditLedger::new_in_memory().await.unwrap());
 
     // Mock broker
-    let mock_broker = Arc::new(MockBrokerExecutor::new(true));
+    let mock_broker = Arc::new(MockBrokerExecutor::accept_all());
 
     // Risk Engine
     let mut risk_engine = RiskEngine::new(RiskLimits::default(), OtrConfig::default());

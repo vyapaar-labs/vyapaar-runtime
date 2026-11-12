@@ -2,10 +2,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{Mutex, mpsc, oneshot};
 
 use vyapaar_core::*;
-use vyapaar_exec_core::BrokerError;
+use vyapaar_exec_core::{BrokerError, BrokerExecutor};
 use vyapaar_risk::{OtrConfig, RiskEngine, RiskLimits, RiskRefusal};
 use vyapaar_runtime_actors::{RestartStrategy, *};
 use vyapaar_runtime_testing::MockBrokerExecutor;
@@ -63,7 +63,7 @@ async fn test_actor_runtime_end_to_end_pipeline() {
         ..Default::default()
     };
     let risk_engine = RiskEngine::new(limits, OtrConfig::default());
-    let broker = Arc::new(MockBrokerExecutor::new(true));
+    let broker = Arc::new(MockBrokerExecutor::accept_all());
 
     let supervisor = Supervisor::spawn_with_strategy(
         strategy,
@@ -132,7 +132,7 @@ async fn test_risk_actor_blocks_out_of_band_orders() {
     let inst = InstrumentId::new(Exchange::Nse, "TCS");
     let limits = RiskLimits::default();
     let risk_engine = RiskEngine::new(limits, OtrConfig::default());
-    let broker = Arc::new(MockBrokerExecutor::new(false));
+    let broker = Arc::new(MockBrokerExecutor::reject_all());
 
     let (risk_tx, risk_rx) = mpsc::channel(16);
     let (exec_tx, exec_rx) = mpsc::channel(16);
@@ -260,7 +260,7 @@ async fn test_supervisor_restart_strategies() {
         placed: false,
     };
     let risk_engine = RiskEngine::default();
-    let broker = Arc::new(MockBrokerExecutor::new(true));
+    let broker = Arc::new(MockBrokerExecutor::accept_all());
 
     let mut supervisor = Supervisor::spawn_with_strategy(
         strategy,
@@ -294,7 +294,7 @@ async fn test_supervisor_restart_strategies() {
 
 #[tokio::test]
 async fn test_execution_actor_clean_shutdown_drain_loop() {
-    let broker = Arc::new(MockBrokerExecutor::new(true));
+    let broker = Arc::new(MockBrokerExecutor::accept_all());
     let (exec_tx, exec_rx) = mpsc::channel(16);
     let exec_actor = ExecutionActor::new(broker, exec_rx, None, None);
 
@@ -326,6 +326,77 @@ async fn test_execution_actor_clean_shutdown_drain_loop() {
     let ack = reply_rx.await.unwrap().expect("ack received during drain");
     assert_eq!(ack.status, OrderStatus::New);
 
+    let final_status = handle.await.unwrap();
+    assert_eq!(final_status, ActorStatus::Stopped);
+}
+
+#[tokio::test]
+async fn test_execution_actor_composes_exec_stack() {
+    // The actor composes vyapaar-exec's RiskGatedExecutor over RateLimitedBroker:
+    // refused orders must never reach the broker, and accepted orders flow
+    // through the per-broker token bucket.
+    let broker: Arc<dyn BrokerExecutor> = Arc::new(MockBrokerExecutor::accept_all());
+    let (exec_tx, exec_rx) = mpsc::channel(16);
+
+    let risk_engine = Arc::new(Mutex::new(RiskEngine::new(
+        RiskLimits::default(),
+        OtrConfig::default(),
+    )));
+    {
+        let mut engine = risk_engine.lock().await;
+        engine.register_algo("algo-stack-test");
+    }
+
+    let exec_actor = ExecutionActor::new(broker, exec_rx, None, None)
+        .with_exec_stack(Arc::clone(&risk_engine))
+        .expect("exec stack wraps the broker");
+    let handle = tokio::spawn(async move { exec_actor.run().await });
+
+    let inst = InstrumentId::new(Exchange::Nse, "RELIANCE");
+
+    // 1. Valid order passes the risk gate and reaches the (accepting) broker.
+    let req = OrderRequest::new(
+        inst.clone(),
+        OrderSide::Buy,
+        OrderType::Limit(Price::from_rupees("2500.00").unwrap()),
+        Quantity::from_u64(10),
+        "algo-stack-test",
+    );
+    let (reply_tx, reply_rx) = oneshot::channel();
+    exec_tx
+        .send(ExecutionMsg::ExecuteOrder {
+            request: req.clone(),
+            reply_to: reply_tx,
+        })
+        .await
+        .unwrap();
+    let ack = reply_rx
+        .await
+        .unwrap()
+        .expect("order accepted through exec stack");
+    assert_eq!(ack.status, OrderStatus::New);
+
+    // 2. Global halt -> order refused synchronously; the broker never sees it.
+    {
+        let mut engine = risk_engine.lock().await;
+        engine.halt_global("Manual kill-switch", Utc::now());
+    }
+    let (reply_tx, reply_rx) = oneshot::channel();
+    exec_tx
+        .send(ExecutionMsg::ExecuteOrder {
+            request: req,
+            reply_to: reply_tx,
+        })
+        .await
+        .unwrap();
+    let res = reply_rx.await.unwrap();
+    assert!(matches!(
+        res,
+        Err(BrokerError::RiskRefusal(r)) if matches!(*r, RiskRefusal::GlobalHalted { .. })
+    ));
+
+    // 3. Clean staged shutdown.
+    exec_tx.send(ExecutionMsg::Shutdown).await.unwrap();
     let final_status = handle.await.unwrap();
     assert_eq!(final_status, ActorStatus::Stopped);
 }

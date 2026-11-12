@@ -74,7 +74,7 @@ async fn test_e2e_full_pipeline_integration() {
     // Pre-register algo_id to comply with SEBI algo registry rule
     risk_engine.register_algo("e2e-algo-001");
 
-    let broker = Arc::new(MockBrokerExecutor::new(true));
+    let broker = Arc::new(MockBrokerExecutor::accept_all());
 
     let supervisor = Supervisor::spawn_with_strategy(
         strategy,

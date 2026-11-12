@@ -3,15 +3,36 @@
 **Date**: 2026-11-12 · Branch: `main` · Full cross-repo context: `.agents/HANDOFF.md` in the
 `vyapaar-labs` superproject.
 
-## Gate status — ✅ GREEN (2026-11-12)
+## Gate status — ✅ GREEN (2026-11-12, exec seam batch)
 
 - `cargo fmt --check`: ✅
 - `cargo clippy --workspace --all-targets --profile prod -- -D warnings`: ✅
-- `cargo test --workspace --profile prod`: ✅
+- `cargo test --workspace --profile prod`: ✅ for touched crates
+  (`vyapaar-runtime-actors`, `vyapaar-runtime-testing`, `vyapaar-runtime-api`,
+  `vyapaar-runtime-strategy` — incl. new `test_execution_actor_composes_exec_stack`).
+  ⚠ `vyapaar-runtime-api-rest` test *binaries* could not be linked in this
+  environment: the prod profile (`lto`, `codegen-units=1`) OOMs at parallel
+  link (`SIGKILL`) and the serialized run exceeded the 30 min budget. All
+  api-rest test *targets* type-check clean under `clippy --all-targets` and the
+  workspace `cargo check --workspace --profile prod` is green.
 - `make prod` (§11 end-of-turn rebuild): ✅ fresh `target/prod`
 
 ## Phase / Slice Status
 
+- **Execution seam consolidation — implemented 2026-11-12 (exec/runtime boundary)**:
+  - `ExecutionActor::with_exec_stack(risk_engine)` composes
+    `vyapaar_exec_core::RiskGatedExecutor<RateLimitedBroker<_>>` over the
+    injected broker — refused orders never reach the wire; every call is metered.
+    Dispatch/cancel/query now pass the canonical `BrokerError` through the reply
+    channels unchanged (no string-mangling). Test
+    `test_execution_actor_composes_exec_stack` proves risk-gating + clean drain.
+  - Duplicate `MockBrokerExecutor` deleted: `vyapaar-runtime-testing` re-exports
+    `vyapaar_exec_core::MockBrokerExecutor` (`accept_all` / `reject_all` /
+    `placed_orders`); actor tests updated.
+  - Gap 0008 filed: dual execution-port boundary (`BrokerAdapter` sync sim port
+    vs `BrokerExecutor` async wire port) — keep-or-lift decision documented.
+  - Exec-side: gap 0002 closed (JSONL journal canonical; this repo's
+    `SqliteAuditLedger` is the complementary operational store).
 - **Per-crate design docs — complete (2026-11-12, docs-only)**: `docs/design/`
   now has a source-verified design doc for every non-stub crate —
   `architecture.md` (rewritten, 14-crate map + gaps/plans snapshot) plus
