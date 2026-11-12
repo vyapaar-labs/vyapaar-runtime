@@ -24,9 +24,9 @@ data live upstream:
 - `vyapaar-ledger/docs/plans/0002-trade-performance-journal.md` — a new pure
   domain crate, `vyapaar-ledger-performance`, computing trade annotations and
   the performance-metrics/edge-score math this plan's endpoints would expose.
-- `vyapaar-data/docs/gaps/0001-economic-calendar-ingestion.md` — economic
+- `vyapaar-data/docs/gaps/0010-economic-calendar-ingestion.md` — economic
   calendar ingestion.
-- `vyapaar-data/docs/gaps/0002-company-fundamentals-symbol-profile.md` —
+- `vyapaar-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` —
   company fundamentals / symbol-profile data.
 
 This plan's objective is narrow: define the **REST wrapper layer** in
@@ -121,10 +121,10 @@ note, not a hard requirement, since the new routes ultimately call
   the `vyapaar-ledger-performance` crate (trade annotations + performance
   metrics + edge score + daily P&L calendar + account comparison) that
   Phase 1 and Phase 2 of this plan wrap.
-- `vyapaar-data/docs/gaps/0001-economic-calendar-ingestion.md` — provides the
+- `vyapaar-data/docs/gaps/0010-economic-calendar-ingestion.md` — provides the
   economic/earnings/dividends/splits/IPO calendar data that Phase 3's
   `/market-data/calendar` wraps.
-- `vyapaar-data/docs/gaps/0002-company-fundamentals-symbol-profile.md` —
+- `vyapaar-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` —
   provides the company-fundamentals data that Phase 3's
   `/market-data/symbol-profile/:id` wraps.
 - `vyapaar-ui-web/docs/plans/0011-vela-journal-calendar-reports-domain-model.md`
@@ -229,8 +229,8 @@ upstream ledger plan as Phase 1.
 **Phase 3** — market reference data:
 `/market-data/symbol-profile/:id`, `/market-data/calendar`. New functions in
 the existing `market.rs` (not a new file). **Depends on**
-`vyapaar-data/docs/gaps/0001-economic-calendar-ingestion.md` and
-`vyapaar-data/docs/gaps/0002-company-fundamentals-symbol-profile.md` landing
+`vyapaar-data/docs/gaps/0010-economic-calendar-ingestion.md` and
+`vyapaar-data (closed gap 0011 — `SymbolProfile`/`LakehouseProfileReader`, yfinance-backed)` landing
 first.
 
 Every phase above also requires a matching OpenAPI entry in
